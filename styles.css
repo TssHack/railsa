@@ -1,0 +1,168 @@
+/* تنظیمات عمومی */
+body {
+    font-family: 'Vazir', sans-serif;
+    background-color: #f8f9fa;
+    text-align: right; /* راست‌چین کردن متن */
+    transition: background-color 0.3s, color 0.3s; /* افکت نرم تغییر حالت تاریک */
+}
+
+h1 {
+    color: #333;
+    font-size: 2rem;
+    font-weight: bold;
+}
+
+/* استایل خروجی مسیر */
+#route-result {
+    background-color: #fff;
+    padding: 20px;
+    border-radius: 10px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    transition: all 0.3s ease-in-out;
+}
+
+#route-result:hover {
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+}
+
+/* استایل فوتر */
+footer {
+    margin-top: 50px;
+    background-color: #222;
+    padding: 15px 0;
+    color: #ccc;
+    font-size: 0.9rem;
+}
+
+footer a {
+    color: #17a2b8;
+    text-decoration: none;
+    font-weight: bold;
+    transition: color 0.3s;
+}
+
+footer a:hover {
+    color: #f8d210;
+}
+
+/* واکنشگرا کردن dropdownها */
+@media (max-width: 768px) {
+    .col-md-6 {
+        width: 100%;
+        margin-bottom: 15px;
+    }
+}
+
+/* استایل Select2 */
+.select2-container--default .select2-selection--single {
+    border: 1px solid #ced4da;
+    border-radius: 6px;
+    height: 40px;
+    padding: 5px;
+    transition: border 0.2s;
+}
+
+.select2-container--default .select2-selection--single:hover {
+    border: 1px solid #007bff;
+}
+
+.select2-container--default .select2-selection--single .select2-selection__arrow {
+    height: 38px;
+}
+
+/* حالت تاریک پیشرفته */
+body.dark-mode {
+    background-color: #212529;
+    color: #f8f9fa;
+}
+
+body.dark-mode #route-result {
+    background-color: #333;
+    color: #f8f9fa;
+    box-shadow: 0 4px 12px rgba(255, 255, 255, 0.1);
+}
+
+body.dark-mode .navbar {
+    background-color: #1b1b1b !important;
+}
+
+body.dark-mode .btn-secondary {
+    background-color: #555;
+    border-color: #777;
+}
+
+body.dark-mode footer {
+    background-color: #1b1b1b;
+    color: #bbb;
+}
+
+body.dark-mode footer a {
+    color: #4dc9ff;
+}
+
+body.dark-mode footer a:hover {
+    color: #ffd700;
+}
+
+/* استایل کارت‌ها */
+.route-card {
+    border: none;
+    border-radius: 12px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+    margin-bottom: 15px;
+    transition: transform 0.3s, box-shadow 0.3s;
+}
+
+.route-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 6px 14px rgba(0, 0, 0, 0.15);
+}
+
+.route-card .card-body {
+    padding: 18px;
+}
+
+.route-card .card-title {
+    font-size: 1.3rem;
+    font-weight: bold;
+}
+
+.route-card .card-text {
+    color: #666;
+}
+
+/* استایل تغییر خط */
+.line-change {
+    background-color: #fff3cd;
+    border-left: 6px solid #ffc107;
+    padding: 12px;
+    border-radius: 6px;
+    margin-bottom: 12px;
+    font-weight: bold;
+}
+
+/* استایل زمان سفر */
+.travel-time {
+    background-color: #e9ecef;
+    padding: 12px;
+    border-radius: 6px;
+    margin-top: 20px;
+    text-align: center;
+    font-size: 1.15rem;
+    font-weight: bold;
+    transition: background-color 0.3s, transform 0.2s;
+}
+
+.travel-time:hover {
+    background-color: #dde2e6;
+    transform: scale(1.05);
+}
+
+/* دکمه‌های صفحه */
+.btn {
+    transition: all 0.2s ease-in-out;
+}
+
+.btn:hover {
+    transform: translateY(-2px);
+}
