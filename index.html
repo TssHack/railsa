@@ -4,62 +4,92 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="ریل ثا - سامانه آنلاین مسیریابی مترو تهران. بهترین و سریع‌ترین مسیرها را بین ایستگاه‌های مترو تهران پیدا کنید.">
-    <meta name="keywords" content="ریل ثا, مسیریابی مترو تهران, ایستگاه‌های مترو, مترو تهران, مسیر مترو">
+    <meta name="keywords" content="ریل ثا, مسیریابی مترو تهران, ایستگاه‌های مترو, مترو تهران, مسیر مترو, نقشه مترو تهران">
     <meta name="author" content="ریل ثا">
-    <title>ریل ثا - مسیریابی مترو تهران</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <title>ریل ثا - مسیریابی هوشمند مترو تهران</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/rastikerdar/vazir-font@v30.1.0/dist/font-face.css">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
     <link rel="stylesheet" href="styles.css">
-</head>
+    <link rel="icon" href="favicon.ico" type="image/x-icon"> </head>
 <body>
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-custom-dark sticky-top shadow-sm">
         <div class="container">
-            <a class="navbar-brand" href="#">ریل ثا</a>
-            <button id="dark-mode-toggle" class="btn btn-secondary">حالت تاریک</button>
+            <a class="navbar-brand fw-bold" href="#">
+                <i class="fas fa-subway me-2"></i>ریل ثا
+            </a>
+            <button id="dark-mode-toggle" class="btn btn-outline-light btn-sm" aria-label="تغییر حالت نمایش">
+                <i class="fas fa-moon"></i> </button>
         </div>
     </nav>
 
-    <div class="container mt-5">
-        <h1 class="text-center mb-4">ریل ثا - مسیریابی مترو تهران</h1>
-        <div class="row">
-            <div class="col-md-6">
-                <label for="source" class="form-label">ایستگاه مبدأ</label>
-                <select id="source" class="form-select select2">
-                    <option value="">انتخاب کنید</option>
-                </select>
+    <div class="container mt-4 mb-5">
+        <div class="text-center mb-4">
+            <h1 class="display-5 fw-bold">مسیریابی هوشمند مترو تهران</h1>
+            <p class="lead text-muted">سریع‌ترین مسیر بین ایستگاه‌های مترو را پیدا کنید.</p>
+        </div>
+
+        <div id="status-message" class="alert alert-dismissible fade show d-none" role="alert">
+            <span id="status-text"></span>
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+
+        <div class="card shadow-sm mb-4">
+            <div class="card-body">
+                <div class="row g-3 align-items-center">
+                    <div class="col-md-5">
+                        <label for="source" class="form-label"><i class="fas fa-map-marker-alt me-1 text-primary"></i>ایستگاه مبدأ</label>
+                        <select id="source" class="form-select select2">
+                            <option value="">انتخاب کنید...</option>
+                        </select>
+                    </div>
+                     <div class="col-md-2 text-center d-none d-md-block">
+                        <i class="fas fa-exchange-alt fa-2x text-muted"></i>
+                    </div>
+                    <div class="col-md-5">
+                        <label for="destination" class="form-label"><i class="fas fa-flag-checkered me-1 text-success"></i>ایستگاه مقصد</label>
+                        <select id="destination" class="form-select select2">
+                            <option value="">انتخاب کنید...</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="text-center mt-4">
+                    <button id="find-route" class="btn btn-primary btn-lg"><i class="fas fa-search me-1"></i> پیدا کردن مسیر</button>
+                </div>
             </div>
-            <div class="col-md-6">
-                <label for="destination" class="form-label">ایستگاه مقصد</label>
-                <select id="destination" class="form-select select2">
-                    <option value="">انتخاب کنید</option>
-                </select>
+        </div>
+
+        <div id="route-result" class="mt-4">
             </div>
+
+        <div class="card shadow-sm mt-4">
+             <div class="card-header">
+                <i class="fas fa-map-marked-alt me-1"></i> نقشه مسیر
+             </div>
+             <div class="card-body p-0">
+                 <div id="map" style="height: 450px; border-radius: 0 0 var(--bs-card-inner-border-radius) var(--bs-card-inner-border-radius);"></div>
+             </div>
         </div>
-        <div class="text-center mt-4">
-            <button id="find-route" class="btn btn-primary">پیدا کردن مسیر</button>
-            <button id="save-route" class="btn btn-success">ذخیره مسیر</button>
-            <button id="share-route" class="btn btn-info">به‌اشتراک‌گذاری مسیر</button>
-            <button id="print-route" class="btn btn-warning">چاپ مسیر</button>
+
+        <div id="route-actions" class="text-center mt-4 d-none">
+            <button id="save-route" class="btn btn-success m-1"><i class="fas fa-save me-1"></i> ذخیره مسیر</button>
+            <button id="share-route" class="btn btn-info m-1"><i class="fas fa-share-alt me-1"></i> اشتراک‌گذاری</button>
+            <button id="print-route" class="btn btn-warning m-1"><i class="fas fa-print me-1"></i> چاپ مسیر</button>
         </div>
-        <div id="route-result" class="mt-5">
-            <!-- نتیجه مسیریابی اینجا نمایش داده می‌شود -->
-        </div>
-        <div id="map" class="mt-3" style="height: 400px;"></div>
+
     </div>
 
-    <footer class="bg-dark text-white text-center py-3 mt-5">
-    <div class="container">
-        <p>تمامی حقوق برای <strong>ریل ثا</strong> محفوظ است.</p>
-        <p>توسعه‌دهنده: <a href="https://t.me/abj0o" class="text-info" target="_blank">احسان فضلی</a></p>
-    </div>
-</footer>
+    <footer class="bg-custom-dark text-white text-center py-4 mt-5">
+        <div class="container">
+            <p>&copy; <span id="current-year"></span> تمامی حقوق برای <strong>ریل ثا</strong> محفوظ است.</p>
+            <p class="mb-0">توسعه‌دهنده: <a href="https://t.me/abj0o" class="text-info text-decoration-none" target="_blank" rel="noopener noreferrer">احسان فضلی</a></p>
+        </div>
+    </footer>
 
-    <!-- Add jQuery before Select2 -->
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="script.js"></script>
