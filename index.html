@@ -3,22 +3,28 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="ریل ثا - سامانه آنلاین مسیریابی مترو تهران. بهترین و سریع‌ترین مسیرها را بین ایستگاه‌های مترو تهران پیدا کنید.">
-    <meta name="keywords" content="ریل ثا, مسیریابی مترو تهران, ایستگاه‌های مترو, مترو تهران, مسیر مترو, نقشه مترو تهران">
-    <meta name="author" content="ریل ثا">
+    <meta name="description" content="ریل ثا - سامانه هوشمند و آنلاین مسیریابی مترو تهران. بهترین و سریع‌ترین مسیرها را بین ایستگاه‌های مترو تهران پیدا کنید. نقشه آنلاین مترو تهران.">
+    <meta name="keywords" content="ریل ثا, مسیریابی مترو تهران, مترو تهران, ایستگاه مترو, نقشه مترو تهران, سریعترین مسیر مترو, بهترین مسیر مترو, حمل و نقل عمومی تهران">
+    <meta name="author" content="ریل ثا - احسان فضلی">
     <title>ریل ثا - مسیریابی هوشمند مترو تهران</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <link rel="icon" href="favicon.ico" type="image/x-icon">
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/rastikerdar/vazir-font@v30.1.0/dist/font-face.css">
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+    <link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" integrity="sha512-SnH5WK+bZxgPHs44uWIX+LLJAJ9/2PkPKZ5QiAj6Ta86w+fsb2TkcmfRyVX3pBnMFcV7oQPJkl9QevSCWr3W6A==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+
     <link rel="stylesheet" href="styles.css">
-    <link rel="icon" href="favicon.ico" type="image/x-icon"> </head>
+</head>
 <body>
     <nav class="navbar navbar-expand-lg navbar-dark bg-custom-dark sticky-top shadow-sm">
         <div class="container">
-            <a class="navbar-brand fw-bold" href="#">
-                <i class="fas fa-subway me-2"></i>ریل ثا
+            <a class="navbar-brand fw-bold d-flex align-items-center" href="#">
+                <i class="fas fa-subway fa-lg me-2"></i>
+                <span style="font-weight: 800;">ریل ثا</span>
             </a>
             <button id="dark-mode-toggle" class="btn btn-outline-light btn-sm" aria-label="تغییر حالت نمایش">
                 <i class="fas fa-moon"></i> </button>
@@ -27,8 +33,8 @@
 
     <div class="container mt-4 mb-5">
         <div class="text-center mb-4">
-            <h1 class="display-5 fw-bold">مسیریابی هوشمند مترو تهران</h1>
-            <p class="lead text-muted">سریع‌ترین مسیر بین ایستگاه‌های مترو را پیدا کنید.</p>
+            <h1 class="display-5 fw-bolder main-title">مسیریابی هوشمند مترو تهران</h1>
+            <p class="lead text-muted">سریع‌ترین مسیر (بر اساس کمترین ایستگاه) بین دو نقطه را پیدا کنید.</p>
         </div>
 
         <div id="status-message" class="alert alert-dismissible fade show d-none" role="alert">
@@ -36,62 +42,81 @@
             <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
         </div>
 
-        <div class="card shadow-sm mb-4">
-            <div class="card-body">
+        <div class="card shadow-sm mb-4 input-card">
+            <div class="card-body p-lg-4">
                 <div class="row g-3 align-items-center">
-                    <div class="col-md-5">
-                        <label for="source" class="form-label"><i class="fas fa-map-marker-alt me-1 text-primary"></i>ایستگاه مبدأ</label>
-                        <select id="source" class="form-select select2">
+                    <div class="col-lg-5">
+                        <label for="source" class="form-label fw-medium"><i class="fas fa-map-marker-alt me-1 text-primary"></i>ایستگاه مبدأ</label>
+                        <select id="source" class="form-select select2-custom">
                             <option value="">انتخاب کنید...</option>
                         </select>
                     </div>
-                     <div class="col-md-2 text-center d-none d-md-block">
-                        <i class="fas fa-exchange-alt fa-2x text-muted"></i>
+                     <div class="col-lg-2 text-center d-none d-lg-block">
+                        <i class="fas fa-arrow-right-arrow-left fa-2x text-muted route-arrow"></i>
                     </div>
-                    <div class="col-md-5">
-                        <label for="destination" class="form-label"><i class="fas fa-flag-checkered me-1 text-success"></i>ایستگاه مقصد</label>
-                        <select id="destination" class="form-select select2">
+                    <div class="col-lg-5">
+                        <label for="destination" class="form-label fw-medium"><i class="fas fa-flag-checkered me-1 text-success"></i>ایستگاه مقصد</label>
+                        <select id="destination" class="form-select select2-custom">
                             <option value="">انتخاب کنید...</option>
                         </select>
                     </div>
                 </div>
-                <div class="text-center mt-4">
-                    <button id="find-route" class="btn btn-primary btn-lg"><i class="fas fa-search me-1"></i> پیدا کردن مسیر</button>
+                <div class="text-center mt-4 pt-2">
+                    <button id="find-route" class="btn btn-primary btn-lg find-route-btn">
+                        <i class="fas fa-route me-2"></i> پیدا کردن مسیر
+                    </button>
                 </div>
             </div>
         </div>
 
         <div id="route-result" class="mt-4">
+            <div id="skeleton-loader" class="d-none">
+                <div class="skeleton-title mb-4"></div>
+                <div class="skeleton-card mb-3">
+                    <div class="skeleton-line-icon"></div>
+                    <div class="skeleton-text-long"></div>
+                </div>
+                <div class="skeleton-card mb-3">
+                    <div class="skeleton-line-icon"></div>
+                    <div class="skeleton-text-medium"></div>
+                </div>
+                <div class="skeleton-line-change mb-3"></div>
+                <div class="skeleton-card mb-3">
+                    <div class="skeleton-line-icon"></div>
+                    <div class="skeleton-text-long"></div>
+                </div>
+                <div class="skeleton-time mt-4"></div>
+            </div>
             </div>
 
-        <div class="card shadow-sm mt-4">
-             <div class="card-header">
+        <div id="map-card" class="card shadow-sm mt-4 d-none"> <div class="card-header fw-medium">
                 <i class="fas fa-map-marked-alt me-1"></i> نقشه مسیر
              </div>
              <div class="card-body p-0">
-                 <div id="map" style="height: 450px; border-radius: 0 0 var(--bs-card-inner-border-radius) var(--bs-card-inner-border-radius);"></div>
+                 <div id="map"></div>
              </div>
         </div>
 
         <div id="route-actions" class="text-center mt-4 d-none">
-            <button id="save-route" class="btn btn-success m-1"><i class="fas fa-save me-1"></i> ذخیره مسیر</button>
-            <button id="share-route" class="btn btn-info m-1"><i class="fas fa-share-alt me-1"></i> اشتراک‌گذاری</button>
-            <button id="print-route" class="btn btn-warning m-1"><i class="fas fa-print me-1"></i> چاپ مسیر</button>
+            <button id="save-route" class="btn btn-success m-1 action-btn"><i class="fas fa-save me-1"></i> ذخیره مسیر</button>
+            <button id="share-route" class="btn btn-info m-1 action-btn"><i class="fas fa-share-alt me-1"></i> اشتراک‌گذاری</button>
+            <button id="print-route" class="btn btn-warning m-1 action-btn"><i class="fas fa-print me-1"></i> چاپ مسیر</button>
         </div>
 
     </div>
 
-    <footer class="bg-custom-dark text-white text-center py-4 mt-5">
+    <footer class="bg-custom-dark text-white text-center py-4 mt-auto">
         <div class="container">
-            <p>&copy; <span id="current-year"></span> تمامی حقوق برای <strong>ریل ثا</strong> محفوظ است.</p>
-            <p class="mb-0">توسعه‌دهنده: <a href="https://t.me/abj0o" class="text-info text-decoration-none" target="_blank" rel="noopener noreferrer">احسان فضلی</a></p>
+            <p class="mb-1">&copy; <span id="current-year"></span> تمامی حقوق برای <strong>ریل ثا</strong> محفوظ است.</p>
+            <p class="mb-0 small">توسعه‌دهنده: <a href="https://t.me/abj0o" class="text-info-emphasis text-decoration-none" target="_blank" rel="noopener noreferrer">احسان فضلی</a></p>
         </div>
     </footer>
 
-    <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js" integrity="sha256-/JqT3SQfawRcv/BIHPThkBvs0OEvtFFmqPF/lYI/Cxo=" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
     <script src="script.js"></script>
 </body>
 </html>
