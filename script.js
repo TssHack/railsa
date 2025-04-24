@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', function () {
-    // Element References
+    // --- Element References ---
     const sourceSelect = document.getElementById('source');
     const destinationSelect = document.getElementById('destination');
     const findRouteButton = document.getElementById('find-route');
@@ -8,46 +8,63 @@ document.addEventListener('DOMContentLoaded', function () {
     const printRouteButton = document.getElementById('print-route');
     const routeResultDiv = document.getElementById('route-result');
     const routeActionsDiv = document.getElementById('route-actions');
+    const mapCardDiv = document.getElementById('map-card');
+    const mapDiv = document.getElementById('map');
+    const skeletonLoaderDiv = document.getElementById('skeleton-loader');
     const darkModeToggle = document.getElementById('dark-mode-toggle');
     const darkModeIcon = darkModeToggle.querySelector('i');
     const statusMessageDiv = document.getElementById('status-message');
     const statusTextSpan = document.getElementById('status-text');
     const currentYearSpan = document.getElementById('current-year');
 
-    // Constants
-    const TIME_PER_STATION = 2; // minutes
-    const TIME_PER_LINE_CHANGE = 5; // minutes
-    const MAP_CENTER = [35.6892, 51.3890]; // Tehran coordinates
-    const MAP_ZOOM = 11;
-    const STATIONS_DATA_URL = 'https://m4tinbeigi-official.github.io/tehran-metro-data/data/stations.json'; // URL داده‌های ایستگاه‌ها
+    // --- Constants ---
+    const TIME_PER_STATION = 2; // Estimated minutes between stations
+    const TIME_PER_LINE_CHANGE = 5; // Estimated minutes for line change
+    const MAP_CENTER = [35.70, 51.39]; // Centered more accurately on Tehran metro network
+    const MAP_DEFAULT_ZOOM = 11;
+    const MAP_ROUTE_ZOOM_PADDING = [50, 50]; // Padding when fitting bounds
+    const STATIONS_DATA_URL = 'https://m4tinbeigi-official.github.io/tehran-metro-data/data/stations.json';
+    const DEBOUNCE_DELAY = 300; // ms for potential future debouncing
 
-    // State Variables
+    // --- State Variables ---
     let stations = {};
-    let map = null; // Map instance
-    let routeLayerGroup = null; // Layer group for route lines and markers
+    let map = null; // Leaflet Map instance
+    let routeLayerGroup = null; // Layer group for route polylines and markers
     let savedRoutes = JSON.parse(localStorage.getItem('savedRoutes')) || [];
+    let currentRoute = null; // Store the latest calculated route details
 
     // --- Initialization ---
 
-    // Set current year in footer
-    if (currentYearSpan) {
-        currentYearSpan.textContent = new Date().getFullYear();
+    /** Sets the current year in the footer */
+    function setFooterYear() {
+        if (currentYearSpan) {
+            currentYearSpan.textContent = new Date().getFullYear();
+        }
     }
 
-    // Initialize Map
+    /** Initializes the Leaflet map */
     function initializeMap() {
-        if (map) {
-            map.remove(); // Remove previous map instance if exists
+        if (map) { // If map exists, remove it first
+            map.remove();
+            map = null;
         }
-        map = L.map('map').setView(MAP_CENTER, MAP_ZOOM);
+        map = L.map(mapDiv, {
+           zoomControl: false // Disable default zoom, add custom later
+        }).setView(MAP_CENTER, MAP_DEFAULT_ZOOM);
+
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors',
             maxZoom: 18,
         }).addTo(map);
-        routeLayerGroup = L.layerGroup().addTo(map); // Initialize layer group for routes
+
+        // Initialize layer group for route elements
+        routeLayerGroup = L.layerGroup().addTo(map);
+
+        // Add custom zoom control
+        L.control.zoom({ position: 'topright' }).addTo(map);
     }
 
-    // Initialize Dark Mode based on preference or system setting
+    /** Sets dark mode based on preference or system setting */
     function initializeDarkMode() {
         const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
         const savedTheme = localStorage.getItem('theme');
@@ -61,33 +78,45 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }
 
-    // Fetch and process station data
+    /** Fetches and processes station data */
     async function loadStationData() {
+        showStatusMessage('در حال بارگذاری اطلاعات ایستگاه‌ها...', 'info', false); // Non-dismissible initially
         try {
             const response = await fetch(STATIONS_DATA_URL);
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
             const data = await response.json();
-            console.log("Station data loaded:", data); // Log data for debugging
-            stations = data;
+            stations = data; // Store globally
             populateSelects();
             initializeSelect2();
+             // Dismiss the loading message on success
+             const statusAlert = bootstrap.Alert.getOrCreateInstance(statusMessageDiv);
+             if(statusAlert) statusAlert.close();
+            return true; // Indicate success
         } catch (error) {
             console.error('Error loading station data:', error);
-            showStatusMessage('خطا در بارگذاری اطلاعات ایستگاه‌ها. لطفاً صفحه را رفرش کنید.', 'danger');
+            showStatusMessage('خطا در بارگذاری اطلاعات ایستگاه‌ها. لطفاً اتصال اینترنت خود را بررسی کرده و صفحه را رفرش کنید.', 'danger', false); // Keep error message visible
+            return false; // Indicate failure
         }
     }
 
-    // Populate select dropdowns with sorted station names
+    /** Populates select dropdowns with sorted station names */
     function populateSelects() {
         const stationOptions = Object.entries(stations)
             .map(([key, station]) => ({
                 id: key,
-                text: station.translations?.fa || key // Use Persian name or key as fallback
+                // Ensure Persian name exists, fallback to English or key
+                text: station.translations?.fa || station.translations?.en || key
             }))
-            .sort((a, b) => a.text.localeCompare(b.text, 'fa')); // Sort alphabetically in Persian
+            // Sort stations alphabetically based on Persian names
+            .sort((a, b) => a.text.localeCompare(b.text, 'fa'));
 
+        // Clear existing options except placeholder
+        sourceSelect.innerHTML = '<option value="">انتخاب کنید...</option>';
+        destinationSelect.innerHTML = '<option value="">انتخاب کنید...</option>';
+
+        // Add sorted options
         stationOptions.forEach(station => {
             const option = new Option(station.text, station.id);
             sourceSelect.appendChild(option.cloneNode(true));
@@ -95,117 +124,149 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    // Initialize Select2 library on dropdowns
+    /** Initializes Select2 library on dropdowns */
     function initializeSelect2() {
-        $('.select2').select2({
-            theme: "bootstrap-5", // Use Bootstrap 5 theme
-            placeholder: "انتخاب کنید...",
+        $('.select2-custom').select2({
+            theme: "bootstrap-5",
+            placeholder: "ایستگاه مورد نظر را جستجو یا انتخاب کنید...",
             allowClear: true,
-            dir: "rtl", // Set direction for Select2
-             language: "fa" // Optional: if locale file loaded
+            dir: "rtl",
+            language: "fa", // Requires Select2 locale file for full translation
+            width: '100%' // Ensure it takes full width
         });
     }
 
-    // --- Core Logic ---
+    // --- Core Logic: Routing & Display ---
 
-    // Find the shortest path using Breadth-First Search (BFS)
+    /**
+     * Finds the shortest path using Breadth-First Search (BFS).
+     * Returns an array of station keys representing the path, or null if no path found.
+     */
     function findRouteBFS(sourceKey, destinationKey) {
         if (!stations[sourceKey] || !stations[destinationKey]) {
-            console.error("Invalid source or destination key");
+            console.error("Invalid source or destination key provided to BFS:", sourceKey, destinationKey);
             return null;
         }
+        if (sourceKey === destinationKey) return [sourceKey]; // Path from a station to itself
 
-        const queue = [{ station: sourceKey, path: [sourceKey], lines: stations[sourceKey].lines }];
-        const visited = new Set([sourceKey]); // Track visited stations to prevent loops
+        const queue = [{ station: sourceKey, path: [sourceKey] }];
+        const visited = new Set([sourceKey]); // Track visited stations {stationKey}
 
         while (queue.length > 0) {
-            const current = queue.shift();
-            const currentStationKey = current.station;
-            const currentPath = current.path;
-
-            // Goal reached
-            if (currentStationKey === destinationKey) {
-                return currentPath; // Return the found path
-            }
-
-            const currentStationData = stations[currentStationKey];
+            const { station: currentStationKey, path: currentPath } = queue.shift();
 
             // Explore neighbors (relations)
-            if (currentStationData.relations) {
-                currentStationData.relations.forEach(neighborKey => {
+            const currentStationData = stations[currentStationKey];
+            if (currentStationData?.relations) {
+                for (const neighborKey of currentStationData.relations) {
                     if (stations[neighborKey] && !visited.has(neighborKey)) {
                         visited.add(neighborKey);
                         const newPath = [...currentPath, neighborKey];
-                        queue.push({
-                            station: neighborKey,
-                            path: newPath,
-                            lines: stations[neighborKey].lines
-                        });
+
+                        // Goal reached
+                        if (neighborKey === destinationKey) {
+                            return newPath; // Return the found path
+                        }
+
+                        queue.push({ station: neighborKey, path: newPath });
                     }
-                });
+                }
             }
         }
-
+        console.warn("BFS: No path found between", sourceKey, "and", destinationKey);
         return null; // No path found
     }
 
-    // Display the found route on the page and map
-    function displayRoute(route) {
-        routeResultDiv.innerHTML = ''; // Clear previous results
+    /**
+     * Displays the found route on the page and map.
+     * @param {string[]} route - Array of station keys.
+     */
+    function displayRoute(routePath) {
+        routeResultDiv.innerHTML = ''; // Clear previous results or skeleton
         routeLayerGroup.clearLayers(); // Clear previous route from map
-        routeActionsDiv.classList.add('d-none'); // Hide action buttons initially
+        routeActionsDiv.classList.add('d-none'); // Hide action buttons
+        mapCardDiv.classList.add('d-none'); // Hide map card
 
-        if (!route || route.length === 0) {
+        if (!routePath || routePath.length === 0) {
             routeResultDiv.innerHTML = '<p class="alert alert-warning text-center">مسیری بین ایستگاه‌های انتخابی یافت نشد.</p>';
             return;
         }
+         if (routePath.length === 1) {
+            routeResultDiv.innerHTML = '<p class="alert alert-info text-center">مبدأ و مقصد یکسان است.</p>';
+            // Optionally show the single station on map
+            const station = stations[routePath[0]];
+             if (station?.latitude && station?.longitude) {
+                 mapCardDiv.classList.remove('d-none'); // Show map card
+                 addStationMarker(routePath[0], 'ایستگاه:', 'blue');
+                 map.setView([station.latitude, station.longitude], MAP_DEFAULT_ZOOM + 3);
+             }
+            return;
+        }
 
-        let routeHTML = `<h2 class="text-center mb-4">مسیر پیشنهادی (${route.length} ایستگاه)</h2>`;
+
+        let routeHTML = `<h2 class="text-center mb-4">مسیر پیشنهادی (${routePath.length} ایستگاه)</h2>`;
         let previousLine = null;
-        let currentLine = null;
+        let currentSegmentLine = null;
         let totalTime = 0;
         const routeCoordinates = [];
+        let segmentData = []; // Store { coords: [[lat,lng],[lat,lng]], line: number, stepId: string }
 
-        route.forEach((stationKey, index) => {
+        // Build route steps HTML and prepare map data
+        routePath.forEach((stationKey, index) => {
             const station = stations[stationKey];
-            if (!station) return; // Skip if station data is missing
-
-            // Determine the current line (handle interchanges)
-            if (index > 0) {
-                const prevStation = stations[route[index - 1]];
-                // Find common line between current and previous station for segment color
-                currentLine = station.lines.find(line => prevStation.lines.includes(line)) || station.lines[0];
-            } else {
-                currentLine = station.lines[0]; // First station line
+            if (!station) {
+                console.error("Missing station data for key:", stationKey);
+                return; // Skip this step if data is missing
             }
 
-            // Add station coordinates for map polyline
+            // Determine the line for the current segment
+            if (index > 0) {
+                const prevStationKey = routePath[index - 1];
+                const prevStation = stations[prevStationKey];
+                 // Find a common line between current and previous station for this segment
+                currentSegmentLine = station.lines.find(line => prevStation?.lines.includes(line)) || station.lines[0];
+            } else {
+                currentSegmentLine = station.lines[0]; // First station's primary line
+            }
+
+            // Add station coordinates for map polyline segments
              if (station.latitude && station.longitude) {
                 routeCoordinates.push([station.latitude, station.longitude]);
+                 // Create segment data for map highlighting
+                 if (index > 0) {
+                     const prevCoords = routeCoordinates[routeCoordinates.length - 2]; // Get previous coord
+                     segmentData.push({
+                         coords: [prevCoords, [station.latitude, station.longitude]],
+                         line: previousLine, // The line used *before* arriving at current station
+                         stepId: `step-${index}` // Link segment to the step *after* it
+                     });
+                 }
              }
 
-            // Detect line change
-            if (previousLine !== null && currentLine !== previousLine) {
+            // Detect line change: Occurs *at* the current station if its line differs from the previous segment's line
+            if (previousLine !== null && currentSegmentLine !== previousLine) {
                 routeHTML += `
-                    <div class="line-change">
+                    <div class="line-change" data-step-id="change-${index}">
                         <i class="fas fa-exchange-alt"></i>
-                        تغییر خط از <span class="badge" style="background-color: ${getLineColor(previousLine)};">خط ${previousLine}</span>
-                        به <span class="badge" style="background-color: ${getLineColor(currentLine)};">خط ${currentLine}</span>
-                        (زمان تقریبی: ${TIME_PER_LINE_CHANGE} دقیقه)
+                        تغییر خط در <strong>${station.translations?.fa || stationKey}</strong>:
+                        از <span class="badge text-white" style="background-color: ${getLineColor(previousLine)};">خط ${previousLine}</span>
+                        به <span class="badge text-white" style="background-color: ${getLineColor(currentSegmentLine)};">خط ${currentSegmentLine}</span>
+                        <span class="text-muted small ms-auto">(+ ~${TIME_PER_LINE_CHANGE} دقیقه)</span>
                     </div>
                 `;
-                totalTime += TIME_PER_LINE_CHANGE; // Add time for line change
+                totalTime += TIME_PER_LINE_CHANGE;
             }
 
             // Add route step HTML
             const isStart = index === 0;
-            const isEnd = index === route.length - 1;
+            const isEnd = index === routePath.length - 1;
             const stepClass = isStart ? 'start-station' : (isEnd ? 'end-station' : '');
+            const stepId = `step-${index}`; // Unique ID for interaction
 
             routeHTML += `
-                <div class="route-step ${stepClass}">
-                    <span class="line-icon line-${currentLine}" style="background-color: ${getLineColor(currentLine)};">
-                        ${currentLine}
+                <div class="route-step ${stepClass}" data-step-id="${stepId}" data-coords="${station.latitude},${station.longitude}">
+                    <span class="line-icon line-${currentSegmentLine}" style="background-color: ${getLineColor(currentSegmentLine)};">
+                        ${currentSegmentLine}
                     </span>
                     <span class="station-name">${station.translations?.fa || stationKey}</span>
                     ${!isEnd ? '<i class="fas fa-arrow-down mx-2 text-muted"></i>' : ''}
@@ -213,9 +274,9 @@ document.addEventListener('DOMContentLoaded', function () {
             `;
 
             if (index > 0) {
-                totalTime += TIME_PER_STATION; // Add time for travel between stations
+                totalTime += TIME_PER_STATION; // Add time for travel from previous station
             }
-            previousLine = currentLine; // Update previous line for next iteration
+            previousLine = currentSegmentLine; // Update line for the next segment calculation
         });
 
         // Add total estimated time
@@ -224,45 +285,151 @@ document.addEventListener('DOMContentLoaded', function () {
                 <i class="fas fa-clock"></i> زمان تقریبی کل سفر: ${totalTime} دقیقه
             </div>
         `;
-        routeResultDiv.innerHTML = routeHTML;
+        routeResultDiv.innerHTML = routeHTML; // Display generated HTML
 
-        // Display route on map
-        if (routeCoordinates.length > 1) {
-            const polyline = L.polyline(routeCoordinates, {
-                color: getLineColor(stations[route[0]].lines[0]), // Use color of the first line initially
-                weight: 5,
-                opacity: 0.8
-            }).addTo(routeLayerGroup);
-            map.fitBounds(polyline.getBounds(), { padding: [50, 50] }); // Adjust map view to fit route
+        // --- Draw on Map ---
+        mapCardDiv.classList.remove('d-none'); // Show map card
+        let overallBounds = L.latLngBounds([]); // To fit map view
+
+        // Draw segments first for highlighting
+        segmentData.forEach((segment) => {
+             const segmentLine = L.polyline(segment.coords, {
+                 color: getLineColor(segment.line),
+                 weight: 6,
+                 opacity: 0.85,
+                 stepId: segment.stepId // Store related step ID
+             }).addTo(routeLayerGroup);
+
+              // Extend bounds for map fitting
+              overallBounds.extend(segment.coords[0]);
+              overallBounds.extend(segment.coords[1]);
+
+             // Add hover effect on map polyline segment
+             segmentLine.on('mouseover', function (e) {
+                 this.setStyle({ weight: 9, opacity: 1 });
+                 highlightListItem(this.options.stepId, true);
+             });
+             segmentLine.on('mouseout', function (e) {
+                 this.setStyle({ weight: 6, opacity: 0.85 });
+                 highlightListItem(this.options.stepId, false);
+             });
+        });
+
+        // Add Markers for Start and End
+        if (routePath.length > 0) {
+            addStationMarker(routePath[0], ' مبدأ: ', 'blue');
+            addStationMarker(routePath[routePath.length - 1], ' مقصد: ', 'green');
         }
 
-         // Add markers for start and end stations
-        addStationMarker(route[0], ' مبدأ: ', 'blue');
-        addStationMarker(route[route.length - 1], ' مقصد: ', 'green');
+        // Fit map view to the route bounds
+        if (overallBounds.isValid()) {
+             map.fitBounds(overallBounds, { padding: MAP_ROUTE_ZOOM_PADDING });
+        } else if (routeCoordinates.length === 1) {
+             // Handle single point case (start=end) - already handled above
+             map.setView(routeCoordinates[0], MAP_DEFAULT_ZOOM + 3);
+        }
 
 
-        routeActionsDiv.classList.remove('d-none'); // Show action buttons
+        // --- Add Hover Listeners to List Items for Map Interaction ---
+        const routeSteps = routeResultDiv.querySelectorAll('.route-step[data-step-id]');
+        routeSteps.forEach((step, index) => {
+            step.addEventListener('mouseover', () => {
+                // Highlight the segment *leading* to this step
+                const segmentStepId = `step-${index}`;
+                highlightMapSegment(segmentStepId, true);
+                // Highlight the marker *at* this step
+                const coords = step.getAttribute('data-coords').split(',');
+                 if (coords.length === 2) {
+                     highlightMapMarker(coords, true);
+                 }
+
+            });
+            step.addEventListener('mouseout', () => {
+                const segmentStepId = `step-${index}`;
+                highlightMapSegment(segmentStepId, false);
+                 const coords = step.getAttribute('data-coords').split(',');
+                 if (coords.length === 2) {
+                     highlightMapMarker(coords, false);
+                 }
+            });
+        });
+
+        // Show action buttons
+        routeActionsDiv.classList.remove('d-none');
+        // Store the current route for actions
+        currentRoute = routePath;
     }
 
-     // Helper to add markers to the map
-    function addStationMarker(stationKey, prefix = '', markerColor = 'red') {
+
+    /** Helper to add styled markers to the map */
+    function addStationMarker(stationKey, prefix = '', iconColor = 'red') {
         const station = stations[stationKey];
-        if (station && station.latitude && station.longitude) {
-            // Create a custom icon (optional, otherwise default Leaflet icon)
-            // const customIcon = L.icon({ ... }); // Define custom icon if needed
-
-            const marker = L.marker([station.latitude, station.longitude], {
-                 // icon: customIcon // Use custom icon if defined
+        if (station?.latitude && station?.longitude) {
+            // Create a simple circle marker
+            const marker = L.circleMarker([station.latitude, station.longitude], {
+                radius: 8,
+                fillColor: iconColor,
+                color: "#fff", // White border
+                weight: 2,
+                opacity: 1,
+                fillOpacity: 0.9,
+                stationKey: stationKey // Store key for potential future use
             }).addTo(routeLayerGroup);
 
-            marker.bindPopup(`<b>${prefix}</b>${station.translations?.fa || stationKey}`);
-            // marker.on('mouseover', function (e) { this.openPopup(); });
-            // marker.on('mouseout', function (e) { this.closePopup(); });
+            marker.bindPopup(`<b>${prefix}</b>${station.translations?.fa || stationKey}`, {closeButton: false});
+            marker.on('mouseover', function (e) { this.openPopup(); this.setRadius(10); });
+            marker.on('mouseout', function (e) { this.closePopup(); this.setRadius(8); });
         }
     }
 
-    // Get color for a specific metro line
+    /** Helper to highlight/unhighlight a list item */
+    function highlightListItem(stepId, highlight = true) {
+         const listItem = routeResultDiv.querySelector(`[data-step-id='${stepId}']`);
+         if (listItem) {
+            // Using CSS classes for highlighting is cleaner
+             if (highlight) {
+                listItem.classList.add('highlighted');
+             } else {
+                listItem.classList.remove('highlighted');
+             }
+             // listItem.style.backgroundColor = highlight ? 'var(--light-hover-bg, #e0e0e0)' : '';
+             // listItem.style.transform = highlight ? 'scale(1.02)' : 'scale(1)';
+         }
+    }
+     /** Helper to highlight/unhighlight a map segment */
+    function highlightMapSegment(stepId, highlight = true) {
+         routeLayerGroup.eachLayer(layer => {
+            if (layer instanceof L.Polyline && layer.options.stepId === stepId) {
+                 layer.setStyle({
+                     weight: highlight ? 9 : 6,
+                     opacity: highlight ? 1 : 0.85
+                 });
+                 if(highlight) layer.bringToFront();
+            }
+        });
+    }
+      /** Helper to highlight/unhighlight a map marker by coordinates */
+    function highlightMapMarker(coords, highlight = true) {
+        if (!coords || coords.length !== 2) return;
+         const lat = parseFloat(coords[0]);
+         const lng = parseFloat(coords[1]);
+         routeLayerGroup.eachLayer(layer => {
+             if (layer instanceof L.CircleMarker) {
+                 const layerLatLng = layer.getLatLng();
+                 // Compare with tolerance due to potential float precision issues
+                 if (Math.abs(layerLatLng.lat - lat) < 0.00001 && Math.abs(layerLatLng.lng - lng) < 0.00001) {
+                     layer.setRadius(highlight ? 11 : 8);
+                     if(highlight) layer.bringToFront();
+                 }
+             }
+         });
+    }
+
+
+    /** Gets the color for a specific metro line */
     function getLineColor(line) {
+        // Ensure line is treated as a number if it's passed as string
+        const lineNum = parseInt(line, 10);
         const lineColors = {
             1: '#E0001F', // Red
             2: '#2F4389', // Dark Blue
@@ -271,24 +438,37 @@ document.addEventListener('DOMContentLoaded', function () {
             5: '#007E46', // Green
             6: '#EF639F', // Pink
             7: '#7F0B74', // Purple
-            // Add more lines if needed
         };
-        return lineColors[line] || '#777777'; // Default grey color
+        return lineColors[lineNum] || '#777777'; // Default grey
     }
 
-    // Show status messages to the user
-    function showStatusMessage(message, type = 'info') { // types: primary, secondary, success, danger, warning, info, light, dark
+    /** Shows status messages to the user */
+    function showStatusMessage(message, type = 'info', autoDismiss = true) {
         statusTextSpan.textContent = message;
-        statusMessageDiv.className = `alert alert-${type} alert-dismissible fade show`; // Reset classes
-        statusMessageDiv.classList.remove('d-none');
+        // Set class for alert type
+        statusMessageDiv.className = `alert alert-${type} alert-dismissible fade show`;
+        statusMessageDiv.classList.remove('d-none'); // Make it visible
 
-        // Auto-dismiss after 5 seconds
-        setTimeout(() => {
-            const bsAlert = bootstrap.Alert.getOrCreateInstance(statusMessageDiv);
-            if (bsAlert) {
-                bsAlert.close();
-            }
-        }, 5000);
+        // Auto-dismiss logic
+        if (autoDismiss) {
+            setTimeout(() => {
+                const bsAlert = bootstrap.Alert.getOrCreateInstance(statusMessageDiv);
+                if (bsAlert && statusMessageDiv.classList.contains('show')) {
+                    bsAlert.close();
+                }
+            }, 5000); // Dismiss after 5 seconds
+        }
+    }
+
+    /** Copies text to clipboard */
+    function copyToClipboard(text) {
+        navigator.clipboard.writeText(text)
+            .then(() => showStatusMessage('مسیر در کلیپ‌بورد کپی شد!', 'success'))
+            .catch(err => {
+                console.error('Clipboard copy failed:', err);
+                showStatusMessage('خطا در کپی کردن مسیر. لطفاً دستی کپی کنید.', 'danger');
+                // As a fallback, could display the text in a modal for manual copy
+            });
     }
 
     // --- Event Listeners ---
@@ -298,24 +478,31 @@ document.addEventListener('DOMContentLoaded', function () {
         const sourceKey = sourceSelect.value;
         const destinationKey = destinationSelect.value;
 
+        // Basic Validation
         if (!sourceKey || !destinationKey) {
             showStatusMessage('لطفاً ایستگاه مبدأ و مقصد را انتخاب کنید.', 'warning');
             return;
         }
-        if (sourceKey === destinationKey) {
-             showStatusMessage('ایستگاه مبدأ و مقصد نمی‌توانند یکسان باشند.', 'warning');
-            return;
-        }
+        // Note: Same source/destination is handled within displayRoute now.
 
-        // Optional: Show loading state
-        routeResultDiv.innerHTML = '<div class="text-center p-3"><i class="fas fa-spinner fa-spin fa-2x"></i><p>در حال جستجوی مسیر...</p></div>';
-        routeActionsDiv.classList.add('d-none');
+        // Show Skeleton Loader
+        routeResultDiv.innerHTML = ''; // Clear previous content first
+        skeletonLoaderDiv.classList.remove('d-none');
+        routeResultDiv.appendChild(skeletonLoaderDiv); // Ensure skeleton is inside
+        routeActionsDiv.classList.add('d-none'); // Hide actions
+        routeLayerGroup.clearLayers(); // Clear map layers
+        mapCardDiv.classList.add('d-none'); // Hide map card
+        currentRoute = null; // Reset current route
 
-        // Use setTimeout to allow UI update before potentially long calculation
+        // Perform calculation after a short delay to allow UI update
         setTimeout(() => {
-            const route = findRouteBFS(sourceKey, destinationKey);
-            displayRoute(route);
-        }, 50); // Small delay
+            const routePath = findRouteBFS(sourceKey, destinationKey);
+            skeletonLoaderDiv.classList.add('d-none'); // Hide skeleton
+             if (routeResultDiv.contains(skeletonLoaderDiv)) {
+                 routeResultDiv.removeChild(skeletonLoaderDiv); // Remove skeleton from DOM
+             }
+            displayRoute(routePath); // Display results (or 'no route' message)
+        }, 400); // Delay to ensure skeleton visibility
     });
 
     // Dark Mode Toggle Click
@@ -329,118 +516,123 @@ document.addEventListener('DOMContentLoaded', function () {
             darkModeIcon.classList.replace('fa-sun', 'fa-moon');
             localStorage.setItem('theme', 'light');
         }
-        // Re-initialize map to potentially apply dark theme tiles if available/configured
-        // initializeMap(); // Uncomment if you have dark map tiles
+         // Note: Map tiles don't automatically switch theme unless using specific tile provider/plugin
     });
 
     // Save Route Button Click
     saveRouteButton.addEventListener('click', function () {
-        const sourceKey = sourceSelect.value;
+        if (!currentRoute) {
+            showStatusMessage('ابتدا باید مسیری را پیدا کنید.', 'warning');
+            return;
+        }
+        const sourceKey = sourceSelect.value; // Get current selection
         const destinationKey = destinationSelect.value;
-        const currentRoute = findRouteBFS(sourceKey, destinationKey); // Recalculate to be sure
 
-        if (currentRoute) {
-            // Avoid saving duplicates (simple check based on source/dest)
-            const exists = savedRoutes.some(r => r.source === sourceKey && r.destination === destinationKey);
-            if (!exists) {
-                savedRoutes.push({
-                    source: sourceKey,
-                    sourceName: stations[sourceKey]?.translations?.fa || sourceKey,
-                    destination: destinationKey,
-                    destinationName: stations[destinationKey]?.translations?.fa || destinationKey,
-                    route: currentRoute
-                });
-                localStorage.setItem('savedRoutes', JSON.stringify(savedRoutes));
-                showStatusMessage('مسیر با موفقیت ذخیره شد!', 'success');
-            } else {
-                showStatusMessage('این مسیر قبلاً ذخیره شده است.', 'info');
+         // Basic check if route matches current selection (might be redundant if findRoute is always clicked first)
+         if (!currentRoute || currentRoute[0] !== sourceKey || currentRoute[currentRoute.length - 1] !== destinationKey) {
+              showStatusMessage('مسیر نمایش داده شده با انتخاب فعلی مطابقت ندارد. لطفاً دوباره مسیر را پیدا کنید.', 'warning');
+              return;
+         }
+
+        // Avoid saving duplicates (simple check)
+        const exists = savedRoutes.some(r => r.source === sourceKey && r.destination === destinationKey);
+        if (!exists) {
+            const sourceName = stations[sourceKey]?.translations?.fa || sourceKey;
+            const destName = stations[destinationKey]?.translations?.fa || destinationKey;
+            savedRoutes.push({
+                source: sourceKey,
+                sourceName: sourceName,
+                destination: destinationKey,
+                destinationName: destName,
+                route: currentRoute // Save the calculated path
+            });
+            try {
+                 localStorage.setItem('savedRoutes', JSON.stringify(savedRoutes));
+                 showStatusMessage(`مسیر ${sourceName} به ${destName} ذخیره شد.`, 'success');
+            } catch (e) {
+                 console.error("Error saving to localStorage:", e);
+                 showStatusMessage('خطا در ذخیره‌سازی مسیر. (ممکن است حافظه پر باشد)', 'danger');
             }
         } else {
-             showStatusMessage('خطا: امکان ذخیره مسیر وجود ندارد.', 'danger');
+            showStatusMessage('این مسیر قبلاً ذخیره شده است.', 'info');
         }
     });
 
     // Share Route Button Click
     shareRouteButton.addEventListener('click', function () {
-        const sourceKey = sourceSelect.value;
-        const destinationKey = destinationSelect.value;
-
-        if (!sourceKey || !destinationKey) {
-            showStatusMessage('لطفاً ابتدا یک مسیر پیدا کنید.', 'warning');
+         if (!currentRoute) {
+            showStatusMessage('ابتدا باید مسیری را پیدا کنید.', 'warning');
             return;
         }
+        const sourceKey = currentRoute[0];
+        const destinationKey = currentRoute[currentRoute.length - 1];
+        const sourceName = stations[sourceKey]?.translations?.fa || sourceKey;
+        const destName = stations[destinationKey]?.translations?.fa || destinationKey;
 
-        const route = findRouteBFS(sourceKey, destinationKey);
-        if (route) {
-            const sourceName = stations[sourceKey]?.translations?.fa || sourceKey;
-            const destName = stations[destinationKey]?.translations?.fa || destinationKey;
-            const routeText = route.map(stationKey => stations[stationKey]?.translations?.fa || stationKey).join(' -> ');
-            // Construct URL with query parameters
-            const shareUrl = `${window.location.origin}${window.location.pathname}?source=${encodeURIComponent(sourceKey)}&destination=${encodeURIComponent(destinationKey)}`;
-            const shareContent = `مسیر مترو تهران از ${sourceName} به ${destName}:\n${routeText}\n\nمشاهده مسیر: ${shareUrl}\n\n(ایجاد شده توسط ریل ثا)`;
+        // Generate text summary
+        const routeText = currentRoute.map(key => stations[key]?.translations?.fa || key).join(' -> ');
+        // Generate shareable URL
+        const shareUrl = `${window.location.origin}${window.location.pathname}?source=${encodeURIComponent(sourceKey)}&destination=${encodeURIComponent(destinationKey)}`;
+        // Combine text and URL
+        const shareContent = `مسیر مترو تهران از ${sourceName} به ${destName}:\n${routeText}\n\nمشاهده آنلاین مسیر:\n${shareUrl}\n\n(ایجاد شده توسط ریل ثا)`;
 
-            if (navigator.share) { // Use Web Share API if available
-                navigator.share({
-                    title: `مسیر مترو از ${sourceName} به ${destName}`,
-                    text: shareContent,
-                    url: shareUrl,
-                })
-                .then(() => showStatusMessage('مسیر به اشتراک گذاشته شد!', 'success'))
-                .catch((error) => {
-                    console.error('خطا در اشتراک گذاری:', error);
-                    // Fallback to clipboard if share fails or is cancelled
-                    copyToClipboard(shareContent);
-                });
-            } else { // Fallback to clipboard
-                copyToClipboard(shareContent);
-            }
-        } else {
-            showStatusMessage('خطا: امکان اشتراک‌گذاری مسیر وجود ندارد.', 'danger');
+        if (navigator.share) { // Use Web Share API if available
+            navigator.share({
+                title: `مسیر مترو: ${sourceName} به ${destName}`,
+                text: shareContent,
+                // url: shareUrl // URL included in text is often better for cross-platform compatibility
+            })
+            .then(() => console.log('Successful share'))
+            .catch((error) => {
+                 console.error('Share failed:', error);
+                 // Fallback to clipboard only if share API exists but fails
+                 copyToClipboard(shareContent);
+            });
+        } else { // Fallback to clipboard if Web Share API not supported
+            copyToClipboard(shareContent);
         }
     });
-
-     // Helper function to copy text to clipboard
-    function copyToClipboard(text) {
-        navigator.clipboard.writeText(text)
-            .then(() => showStatusMessage('مسیر در کلیپ‌بورد کپی شد!', 'success'))
-            .catch(err => {
-                console.error('خطا در کپی کردن:', err);
-                showStatusMessage('خطا در کپی کردن مسیر در کلیپ‌بورد.', 'danger');
-            });
-    }
 
     // Print Route Button Click
     printRouteButton.addEventListener('click', function () {
-        window.print(); // Uses CSS @media print rules for formatting
+         if (!currentRoute) {
+            showStatusMessage('ابتدا باید مسیری را پیدا کنید.', 'warning');
+            return;
+        }
+        window.print(); // Uses CSS @media print rules
     });
 
-     // Check for query parameters on page load to potentially pre-fill a shared route
+    /** Checks URL for route parameters on page load */
     function checkUrlForRoute() {
         const urlParams = new URLSearchParams(window.location.search);
         const sourceParam = urlParams.get('source');
         const destParam = urlParams.get('destination');
 
         if (sourceParam && destParam && stations[sourceParam] && stations[destParam]) {
-            // Set the values in the select dropdowns
-            // Use jQuery's val() and trigger('change') for Select2 compatibility
+             console.log("Loading route from URL parameters:", sourceParam, destParam);
+            // Set the values in the select dropdowns using Select2's API
              $('#source').val(sourceParam).trigger('change');
              $('#destination').val(destParam).trigger('change');
 
-            // Find and display the route
-             // Use a small timeout to ensure Select2 updates visually first
+            // Automatically find and display the route
+             // Use a timeout to ensure Select2 updates visually and data is ready
             setTimeout(() => {
-                 findRouteButton.click();
-                 showStatusMessage('مسیر به اشتراک گذاشته شده بارگذاری شد.', 'info');
-            }, 200);
+                 findRouteButton.click(); // Simulate click
+                 showStatusMessage('مسیر اشتراک گذاشته شده بارگذاری شد.', 'info');
+            }, 500); // Adjust delay if needed
         }
     }
 
-    // --- Run Initialization ---
-    initializeMap();
+    // --- Run Initializations ---
+    setFooterYear();
+    initializeMap(); // Initialize map structure first
     initializeDarkMode();
-    loadStationData().then(() => {
-        // Check for shared route in URL only after stations are loaded
-        checkUrlForRoute();
+    // Load station data, then check URL params
+    loadStationData().then(success => {
+        if (success) {
+            checkUrlForRoute();
+        }
     });
 
 }); // End DOMContentLoaded
+
