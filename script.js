@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', function () {
-    // --- Element References ---
+    // Element References
     const sourceSelect = document.getElementById('source');
     const destinationSelect = document.getElementById('destination');
     const findRouteButton = document.getElementById('find-route');
@@ -8,63 +8,46 @@ document.addEventListener('DOMContentLoaded', function () {
     const printRouteButton = document.getElementById('print-route');
     const routeResultDiv = document.getElementById('route-result');
     const routeActionsDiv = document.getElementById('route-actions');
-    const mapCardDiv = document.getElementById('map-card');
-    const mapDiv = document.getElementById('map');
-    const skeletonLoaderDiv = document.getElementById('skeleton-loader');
     const darkModeToggle = document.getElementById('dark-mode-toggle');
     const darkModeIcon = darkModeToggle.querySelector('i');
     const statusMessageDiv = document.getElementById('status-message');
     const statusTextSpan = document.getElementById('status-text');
     const currentYearSpan = document.getElementById('current-year');
 
-    // --- Constants ---
-    const TIME_PER_STATION = 2; // Estimated minutes between stations
-    const TIME_PER_LINE_CHANGE = 5; // Estimated minutes for line change
-    const MAP_CENTER = [35.70, 51.39]; // Centered more accurately on Tehran metro network
-    const MAP_DEFAULT_ZOOM = 11;
-    const MAP_ROUTE_ZOOM_PADDING = [50, 50]; // Padding when fitting bounds
-    const STATIONS_DATA_URL = 'https://m4tinbeigi-official.github.io/tehran-metro-data/data/stations.json';
-    const DEBOUNCE_DELAY = 300; // ms for potential future debouncing
+    // Constants
+    const TIME_PER_STATION = 2; // minutes
+    const TIME_PER_LINE_CHANGE = 5; // minutes
+    const MAP_CENTER = [35.6892, 51.3890]; // Tehran coordinates
+    const MAP_ZOOM = 11;
+    const STATIONS_DATA_URL = 'https://m4tinbeigi-official.github.io/tehran-metro-data/data/stations.json'; // URL داده‌های ایستگاه‌ها
 
-    // --- State Variables ---
+    // State Variables
     let stations = {};
-    let map = null; // Leaflet Map instance
-    let routeLayerGroup = null; // Layer group for route polylines and markers
+    let map = null; // Map instance
+    let routeLayerGroup = null; // Layer group for route lines and markers
     let savedRoutes = JSON.parse(localStorage.getItem('savedRoutes')) || [];
-    let currentRoute = null; // Store the latest calculated route details
 
     // --- Initialization ---
 
-    /** Sets the current year in the footer */
-    function setFooterYear() {
-        if (currentYearSpan) {
-            currentYearSpan.textContent = new Date().getFullYear();
-        }
+    // Set current year in footer
+    if (currentYearSpan) {
+        currentYearSpan.textContent = new Date().getFullYear();
     }
 
-    /** Initializes the Leaflet map */
+    // Initialize Map
     function initializeMap() {
-        if (map) { // If map exists, remove it first
-            map.remove();
-            map = null;
+        if (map) {
+            map.remove(); // Remove previous map instance if exists
         }
-        map = L.map(mapDiv, {
-           zoomControl: false // Disable default zoom, add custom later
-        }).setView(MAP_CENTER, MAP_DEFAULT_ZOOM);
-
+        map = L.map('map').setView(MAP_CENTER, MAP_ZOOM);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors',
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
             maxZoom: 18,
         }).addTo(map);
-
-        // Initialize layer group for route elements
-        routeLayerGroup = L.layerGroup().addTo(map);
-
-        // Add custom zoom control
-        L.control.zoom({ position: 'topright' }).addTo(map);
+        routeLayerGroup = L.layerGroup().addTo(map); // Initialize layer group for routes
     }
 
-    /** Sets dark mode based on preference or system setting */
+    // Initialize Dark Mode based on preference or system setting
     function initializeDarkMode() {
         const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
         const savedTheme = localStorage.getItem('theme');
@@ -78,45 +61,33 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }
 
-    /** Fetches and processes station data */
+    // Fetch and process station data
     async function loadStationData() {
-        showStatusMessage('در حال بارگذاری اطلاعات ایستگاه‌ها...', 'info', false); // Non-dismissible initially
         try {
             const response = await fetch(STATIONS_DATA_URL);
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
             const data = await response.json();
-            stations = data; // Store globally
+            console.log("Station data loaded:", data); // Log data for debugging
+            stations = data;
             populateSelects();
             initializeSelect2();
-             // Dismiss the loading message on success
-             const statusAlert = bootstrap.Alert.getOrCreateInstance(statusMessageDiv);
-             if(statusAlert) statusAlert.close();
-            return true; // Indicate success
         } catch (error) {
             console.error('Error loading station data:', error);
-            showStatusMessage('خطا در بارگذاری اطلاعات ایستگاه‌ها. لطفاً اتصال اینترنت خود را بررسی کرده و صفحه را رفرش کنید.', 'danger', false); // Keep error message visible
-            return false; // Indicate failure
+            showStatusMessage('خطا در بارگذاری اطلاعات ایستگاه‌ها. لطفاً صفحه را رفرش کنید.', 'danger');
         }
     }
 
-    /** Populates select dropdowns with sorted station names */
+    // Populate select dropdowns with sorted station names
     function populateSelects() {
         const stationOptions = Object.entries(stations)
             .map(([key, station]) => ({
                 id: key,
-                // Ensure Persian name exists, fallback to English or key
-                text: station.translations?.fa || station.translations?.en || key
+                text: station.translations?.fa || key // Use Persian name or key as fallback
             }))
-            // Sort stations alphabetically based on Persian names
-            .sort((a, b) => a.text.localeCompare(b.text, 'fa'));
+            .sort((a, b) => a.text.localeCompare(b.text, 'fa')); // Sort alphabetically in Persian
 
-        // Clear existing options except placeholder
-        sourceSelect.innerHTML = '<option value="">انتخاب کنید...</option>';
-        destinationSelect.innerHTML = '<option value="">انتخاب کنید...</option>';
-
-        // Add sorted options
         stationOptions.forEach(station => {
             const option = new Option(station.text, station.id);
             sourceSelect.appendChild(option.cloneNode(true));
@@ -124,141 +95,117 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    /** Initializes Select2 library on dropdowns */
+    // Initialize Select2 library on dropdowns
     function initializeSelect2() {
-        $('.select2-custom').select2({
-            theme: "bootstrap-5",
-            placeholder: "ایستگاه مورد نظر را جستجو یا انتخاب کنید...",
+        $('.select2').select2({
+            theme: "bootstrap-5", // Use Bootstrap 5 theme
+            placeholder: "انتخاب کنید...",
             allowClear: true,
-            dir: "rtl",
-            language: "fa", // Requires Select2 locale file for full translation
-            width: '100%' // Ensure it takes full width
+            dir: "rtl", // Set direction for Select2
+             language: "fa" // Optional: if locale file loaded
         });
     }
 
-    // --- Core Logic: Routing & Display ---
+    // --- Core Logic ---
 
-    /**
-     * Finds the shortest path using Breadth-First Search (BFS).
-     * Returns an array of station keys representing the path, or null if no path found.
-     */
+    // Find the shortest path using Breadth-First Search (BFS)
     function findRouteBFS(sourceKey, destinationKey) {
         if (!stations[sourceKey] || !stations[destinationKey]) {
-            console.error("Invalid source or destination key provided to BFS:", sourceKey, destinationKey);
+            console.error("Invalid source or destination key");
             return null;
         }
-        if (sourceKey === destinationKey) return [sourceKey]; // Path from a station to itself
 
-        const queue = [{ station: sourceKey, path: [sourceKey] }];
-        const visited = new Set([sourceKey]); // Track visited stations {stationKey}
+        const queue = [{ station: sourceKey, path: [sourceKey], lines: stations[sourceKey].lines }];
+        const visited = new Set([sourceKey]); // Track visited stations to prevent loops
 
         while (queue.length > 0) {
-            const { station: currentStationKey, path: currentPath } = queue.shift();
+            const current = queue.shift();
+            const currentStationKey = current.station;
+            const currentPath = current.path;
+
+            // Goal reached
+            if (currentStationKey === destinationKey) {
+                return currentPath; // Return the found path
+            }
+
+            const currentStationData = stations[currentStationKey];
 
             // Explore neighbors (relations)
-            const currentStationData = stations[currentStationKey];
-            if (currentStationData?.relations) {
-                for (const neighborKey of currentStationData.relations) {
+            if (currentStationData.relations) {
+                currentStationData.relations.forEach(neighborKey => {
                     if (stations[neighborKey] && !visited.has(neighborKey)) {
                         visited.add(neighborKey);
                         const newPath = [...currentPath, neighborKey];
-
-                        // Goal reached
-                        if (neighborKey === destinationKey) {
-                            return newPath; // Return the found path
-                        }
-
-                        queue.push({ station: neighborKey, path: newPath });
+                        queue.push({
+                            station: neighborKey,
+                            path: newPath,
+                            lines: stations[neighborKey].lines
+                        });
                     }
-                }
+                });
             }
         }
-        console.warn("BFS: No path found between", sourceKey, "and", destinationKey);
+
         return null; // No path found
     }
 
-    /**
-     * Displays the found route on the page and map.
-     * @param {string[]} route - Array of station keys.
-     */
-        // ... (بقیه کدها و توابع مثل قبل باقی می‌مانند) ...
-
-    /**
-     * Displays the found route on the page and map with animations and line numbers.
-     * @param {string[]} routePath - Array of station keys.
-     */
-    function displayRoute(routePath) {
-        routeResultDiv.innerHTML = ''; // Clear previous results or skeleton
+    // Display the found route on the page and map
+    function displayRoute(route) {
+        routeResultDiv.innerHTML = ''; // Clear previous results
         routeLayerGroup.clearLayers(); // Clear previous route from map
-        routeActionsDiv.classList.add('d-none'); // Hide action buttons
-        mapCardDiv.classList.add('d-none'); // Hide map card
+        routeActionsDiv.classList.add('d-none'); // Hide action buttons initially
 
-        if (!routePath || routePath.length === 0) {
+        if (!route || route.length === 0) {
             routeResultDiv.innerHTML = '<p class="alert alert-warning text-center">مسیری بین ایستگاه‌های انتخابی یافت نشد.</p>';
             return;
         }
-        if (routePath.length === 1) {
-            routeResultDiv.innerHTML = '<p class="alert alert-info text-center">مبدأ و مقصد یکسان است.</p>';
-            const station = stations[routePath[0]];
-            if (station?.latitude && station?.longitude) {
-                mapCardDiv.classList.remove('d-none');
-                addStationMarker(routePath[0], 'ایستگاه:', 'blue');
-                map.setView([station.latitude, station.longitude], MAP_DEFAULT_ZOOM + 3);
-            }
-            return;
-        }
 
-        // --- 1. Build HTML for Route Steps (Similar to before) ---
-        let routeHTML = `<h2 class="text-center mb-4">مسیر پیشنهادی (${routePath.length} ایستگاه)</h2>`;
+        let routeHTML = `<h2 class="text-center mb-4">مسیر پیشنهادی (${route.length} ایستگاه)</h2>`;
         let previousLine = null;
-        let currentSegmentLine = null;
+        let currentLine = null;
         let totalTime = 0;
-        const routeCoordinates = []; // Store all coordinates for bounds calculation
-        let mapElements = []; // Store map layers { lineLayer, decoratorLayer, stepId } for highlighting
+        const routeCoordinates = [];
 
-        routePath.forEach((stationKey, index) => {
+        route.forEach((stationKey, index) => {
             const station = stations[stationKey];
-            if (!station) return;
+            if (!station) return; // Skip if station data is missing
 
-            // Determine line for the current segment
+            // Determine the current line (handle interchanges)
             if (index > 0) {
-                const prevStation = stations[routePath[index - 1]];
-                currentSegmentLine = station.lines.find(line => prevStation?.lines.includes(line)) || station.lines[0];
+                const prevStation = stations[route[index - 1]];
+                // Find common line between current and previous station for segment color
+                currentLine = station.lines.find(line => prevStation.lines.includes(line)) || station.lines[0];
             } else {
-                currentSegmentLine = station.lines[0];
+                currentLine = station.lines[0]; // First station line
             }
 
-             // Store coordinates
+            // Add station coordinates for map polyline
              if (station.latitude && station.longitude) {
                 routeCoordinates.push([station.latitude, station.longitude]);
              }
 
-            // Detect line change and build HTML
-            if (index > 0 && previousLine !== null && currentSegmentLine !== previousLine) {
-                 // Find the interchange station name
-                 const interchangeStationName = stations[routePath[index-1]]?.translations?.fa || routePath[index-1];
+            // Detect line change
+            if (previousLine !== null && currentLine !== previousLine) {
                 routeHTML += `
-                    <div class="line-change" data-step-id="change-${index -1}">
+                    <div class="line-change">
                         <i class="fas fa-exchange-alt"></i>
-                        تغییر خط در <strong>${interchangeStationName}</strong>:
-                        از <span class="badge text-white" style="background-color: ${getLineColor(previousLine)};">خط ${previousLine}</span>
-                        به <span class="badge text-white" style="background-color: ${getLineColor(currentSegmentLine)};">خط ${currentSegmentLine}</span>
-                        <span class="text-muted small ms-auto">(+ ~${TIME_PER_LINE_CHANGE} دقیقه)</span>
+                        تغییر خط از <span class="badge" style="background-color: ${getLineColor(previousLine)};">خط ${previousLine}</span>
+                        به <span class="badge" style="background-color: ${getLineColor(currentLine)};">خط ${currentLine}</span>
+                        (زمان تقریبی: ${TIME_PER_LINE_CHANGE} دقیقه)
                     </div>
                 `;
-                totalTime += TIME_PER_LINE_CHANGE;
+                totalTime += TIME_PER_LINE_CHANGE; // Add time for line change
             }
 
             // Add route step HTML
             const isStart = index === 0;
-            const isEnd = index === routePath.length - 1;
+            const isEnd = index === route.length - 1;
             const stepClass = isStart ? 'start-station' : (isEnd ? 'end-station' : '');
-            const stepId = `step-${index}`;
 
             routeHTML += `
-                <div class="route-step ${stepClass}" data-step-id="${stepId}" data-coords="${station.latitude},${station.longitude}">
-                    <span class="line-icon line-${currentSegmentLine}" style="background-color: ${getLineColor(currentSegmentLine)};">
-                        ${currentSegmentLine}
+                <div class="route-step ${stepClass}">
+                    <span class="line-icon line-${currentLine}" style="background-color: ${getLineColor(currentLine)};">
+                        ${currentLine}
                     </span>
                     <span class="station-name">${station.translations?.fa || stationKey}</span>
                     ${!isEnd ? '<i class="fas fa-arrow-down mx-2 text-muted"></i>' : ''}
@@ -266,236 +213,234 @@ document.addEventListener('DOMContentLoaded', function () {
             `;
 
             if (index > 0) {
-                totalTime += TIME_PER_STATION;
+                totalTime += TIME_PER_STATION; // Add time for travel between stations
             }
-            previousLine = currentSegmentLine;
+            previousLine = currentLine; // Update previous line for next iteration
         });
 
-        // Add total estimated time HTML
-        routeHTML += `<div class="travel-time"> ... </div>`; // (Same as before)
+        // Add total estimated time
+        routeHTML += `
+            <div class="travel-time">
+                <i class="fas fa-clock"></i> زمان تقریبی کل سفر: ${totalTime} دقیقه
+            </div>
+        `;
         routeResultDiv.innerHTML = routeHTML;
 
-        // --- 2. Draw Enhanced Route on Map ---
-        mapCardDiv.classList.remove('d-none'); // Show map card
-        let overallBounds = L.latLngBounds([]); // To fit map view
-
-        // Iterate through segments (pairs of coordinates) to draw animated lines and decorators
-        for (let i = 0; i < routeCoordinates.length - 1; i++) {
-            const startPoint = routeCoordinates[i];
-            const endPoint = routeCoordinates[i + 1];
-            const segmentCoords = [startPoint, endPoint];
-
-            // Determine the line number for this specific segment
-             const startStationKey = routePath[i];
-             const endStationKey = routePath[i + 1];
-             const startStation = stations[startStationKey];
-             const endStation = stations[endStationKey];
-             const segmentLineNum = endStation.lines.find(line => startStation?.lines.includes(line)) || endStation.lines[0];
-
-
-            // --- a) Create Animated AntPath Polyline ---
-            const antPathOptions = {
-                delay: 400,          // Delay before animation starts
-                dashArray: [10, 20], // Dash pattern
-                weight: 6,           // Line thickness
-                color: getLineColor(segmentLineNum), // Line color
-                opacity: 0.85,
-                pulseColor: "#FFFFFF", // Color of the animated dash/pulse
-                hardwareAccelerated: true, // Use hardware acceleration if available
-                // Custom options: store stepId for linking
-                stepId: `step-${i + 1}` // Link segment to the step *after* it
-            };
-            const antPathLine = L.polyline.antPath(segmentCoords, antPathOptions).addTo(routeLayerGroup);
-
-
-            // --- b) Create Polyline Decorator for Line Number ---
-            const decorator = L.polylineDecorator(antPathLine, { // Decorate the antPath line itself
-                patterns: [
-                    {
-                        offset: '50%', // Position in the middle of the segment
-                        repeat: 0,     // Don't repeat on short segments
-                        symbol: L.Symbol.text(String(segmentLineNum), { // Display line number as text
-                            pixelSize: 12, // Font size
-                            polygon: false, // Don't draw polygon background
-                            pathOptions: {
-                                stroke: true,
-                                weight: 0.5, // Very thin stroke around text
-                                color: '#000000', // Text border color (optional)
-                                fill: true,
-                                fillColor: '#FFFFFF', // Text color
-                                fillOpacity: 1,
-                                // Custom options for styling the text background (optional)
-                                // Use a background shape for better visibility:
-                                // L.Symbol.marker({ markerOptions: { icon: L.divIcon({className: 'line-number-label', html: String(segmentLineNum)}) }})
-                            }
-                        })
-                    }
-                    // Optionally add arrows for direction:
-                    // {offset: '10%', repeat: '80px', symbol: L.Symbol.arrowHead({pixelSize: 10, pathOptions: {fillOpacity: 1, weight: 0, color: getLineColor(segmentLineNum)}})}
-                ]
+        // Display route on map
+        if (routeCoordinates.length > 1) {
+            const polyline = L.polyline(routeCoordinates, {
+                color: getLineColor(stations[route[0]].lines[0]), // Use color of the first line initially
+                weight: 5,
+                opacity: 0.8
             }).addTo(routeLayerGroup);
-
-
-             // Store layers for highlighting
-             mapElements.push({
-                lineLayer: antPathLine,
-                decoratorLayer: decorator, // We might not need to highlight the decorator
-                stepId: `step-${i + 1}`
-             });
-
-             // Extend bounds for map fitting
-             overallBounds.extend(startPoint);
-             overallBounds.extend(endPoint);
+            map.fitBounds(polyline.getBounds(), { padding: [50, 50] }); // Adjust map view to fit route
         }
 
+         // Add markers for start and end stations
+        addStationMarker(route[0], ' مبدأ: ', 'blue');
+        addStationMarker(route[route.length - 1], ' مقصد: ', 'green');
 
-        // --- 3. Add Markers and Fit Map ---
-        if (routePath.length > 0) {
-            addStationMarker(routePath[0], ' مبدأ: ', '#0d6efd'); // Primary color blue
-            addStationMarker(routePath[routePath.length - 1], ' مقصد: ', '#198754'); // Success color green
-        }
-        if (overallBounds.isValid()) {
-            map.fitBounds(overallBounds, { padding: MAP_ROUTE_ZOOM_PADDING, maxZoom: 16 }); // Avoid zooming too far in
-        }
 
-        // --- 4. Setup Hover Interactions (List <-> Map) ---
-        setupListMapInteractions(mapElements);
-
-        // --- 5. Show Action Buttons and Store Route ---
-        routeActionsDiv.classList.remove('d-none');
-        currentRoute = routePath; // Store for save/share/print
+        routeActionsDiv.classList.remove('d-none'); // Show action buttons
     }
 
-
-    /** Sets up hover interactions between the route list and map elements */
-    function setupListMapInteractions(mapElements) {
-        const routeSteps = routeResultDiv.querySelectorAll('.route-step[data-step-id]');
-        routeSteps.forEach((step) => {
-            const stepId = step.getAttribute('data-step-id');
-            const coords = step.getAttribute('data-coords')?.split(',');
-
-            step.addEventListener('mouseover', () => {
-                highlightMapElement(mapElements, stepId, true); // Highlight associated line segment
-                 if (coords?.length === 2) highlightMapMarker(coords, true); // Highlight station marker
-            });
-            step.addEventListener('mouseout', () => {
-                highlightMapElement(mapElements, stepId, false);
-                 if (coords?.length === 2) highlightMapMarker(coords, false);
-            });
-        });
-
-         // Add hover listeners to map lines (optional, might conflict with marker popups)
-         mapElements.forEach(elem => {
-             if (elem.lineLayer) {
-                 elem.lineLayer.on('mouseover', function(e) {
-                     this.setStyle({ weight: 9, opacity: 1 }); // Highlight line
-                     highlightListItem(this.options.stepId, true); // Highlight corresponding list item
-                     // Optional: Bring related decorator to front if needed
-                     // if (elem.decoratorLayer) elem.decoratorLayer.bringToFront();
-                 });
-                 elem.lineLayer.on('mouseout', function(e) {
-                      this.setStyle({ weight: 6, opacity: 0.85 }); // Reset style
-                      highlightListItem(this.options.stepId, false);
-                 });
-             }
-         });
-    }
-
-     /** Helper to highlight/unhighlight a map segment (AntPath) */
-    function highlightMapElement(mapElements, stepId, highlight = true) {
-        const element = mapElements.find(el => el.stepId === stepId);
-        if (element && element.lineLayer) {
-            element.lineLayer.setStyle({
-                 weight: highlight ? 9 : 6, // Make line thicker on highlight
-                 opacity: highlight ? 1 : 0.85
-             });
-              if(highlight) element.lineLayer.bringToFront();
-        }
-    }
-
-    /** Helper to highlight/unhighlight a list item by adding/removing a CSS class */
-    function highlightListItem(stepId, highlight = true) {
-         const listItem = routeResultDiv.querySelector(`[data-step-id='${stepId}']`);
-         if (listItem) {
-             if (highlight) {
-                listItem.classList.add('highlighted'); // Add class
-             } else {
-                listItem.classList.remove('highlighted'); // Remove class
-             }
-         }
-    }
-
-     // --- (Make sure addStationMarker, getLineColor, showStatusMessage, etc. are defined as before) ---
-     // --- (Make sure Event Listeners for buttons, dark mode etc. are defined as before) ---
-     // --- (Make sure Initialization calls are defined as before) ---
-
-    /** Helper to add styled markers to the map */
+     // Helper to add markers to the map
     function addStationMarker(stationKey, prefix = '', markerColor = 'red') {
         const station = stations[stationKey];
-        if (station?.latitude && station?.longitude) {
-            const marker = L.circleMarker([station.latitude, station.longitude], {
-                radius: 8,
-                fillColor: markerColor, // Use passed color
-                color: "#fff",
-                weight: 2,
-                opacity: 1,
-                fillOpacity: 0.95, // Slightly more opaque
-                stationKey: stationKey,
-                interactive: true // Ensure marker is interactive
+        if (station && station.latitude && station.longitude) {
+            // Create a custom icon (optional, otherwise default Leaflet icon)
+            // const customIcon = L.icon({ ... }); // Define custom icon if needed
+
+            const marker = L.marker([station.latitude, station.longitude], {
+                 // icon: customIcon // Use custom icon if defined
             }).addTo(routeLayerGroup);
 
-            marker.bindPopup(`<b>${prefix}</b>${station.translations?.fa || stationKey}`, {closeButton: false, autoPan: false});
-             // Highlight on hover
-            marker.on('mouseover', function (e) {
-                 this.openPopup();
-                 this.setRadius(11); // Increase size
-                 this.bringToFront();
-                 // Also highlight corresponding list item if possible
-                 const stepElem = routeResultDiv.querySelector(`[data-coords^="${this.getLatLng().lat},${this.getLatLng().lng}"]`);
-                 if(stepElem) highlightListItem(stepElem.getAttribute('data-step-id'), true);
-
-            });
-            marker.on('mouseout', function (e) {
-                 this.closePopup();
-                 this.setRadius(8); // Reset size
-                  const stepElem = routeResultDiv.querySelector(`[data-coords^="${this.getLatLng().lat},${this.getLatLng().lng}"]`);
-                 if(stepElem) highlightListItem(stepElem.getAttribute('data-step-id'), false);
-            });
+            marker.bindPopup(`<b>${prefix}</b>${station.translations?.fa || stationKey}`);
+            // marker.on('mouseover', function (e) { this.openPopup(); });
+            // marker.on('mouseout', function (e) { this.closePopup(); });
         }
     }
 
-      /** Helper to highlight/unhighlight a map marker by coordinates */
-     function highlightMapMarker(coords, highlight = true) {
-        // ... (implementation from previous response is fine) ...
-         if (!coords || coords.length !== 2) return;
-         const lat = parseFloat(coords[0]);
-         const lng = parseFloat(coords[1]);
-         routeLayerGroup.eachLayer(layer => {
-             if (layer instanceof L.CircleMarker) {
-                 const layerLatLng = layer.getLatLng();
-                 if (Math.abs(layerLatLng.lat - lat) < 0.00001 && Math.abs(layerLatLng.lng - lng) < 0.00001) {
-                     layer.setRadius(highlight ? 11 : 8);
-                     if(highlight) {
-                         layer.bringToFront();
-                         layer.openPopup(); // Optionally open popup on hover
-                     } else {
-                        // layer.closePopup(); // Close popup on mouseout
-                     }
-                 }
-             }
-         });
-     }
+    // Get color for a specific metro line
+    function getLineColor(line) {
+        const lineColors = {
+            1: '#E0001F', // Red
+            2: '#2F4389', // Dark Blue
+            3: '#67C5F5', // Light Blue
+            4: '#F8E100', // Yellow
+            5: '#007E46', // Green
+            6: '#EF639F', // Pink
+            7: '#7F0B74', // Purple
+            // Add more lines if needed
+        };
+        return lineColors[line] || '#777777'; // Default grey color
+    }
 
-    // --- Run Initializations ---
-    // ... (same initialization flow as before) ...
-    setFooterYear();
-    initializeMap();
-    initializeDarkMode();
-    loadStationData().then(success => {
-        if (success) {
-            checkUrlForRoute();
+    // Show status messages to the user
+    function showStatusMessage(message, type = 'info') { // types: primary, secondary, success, danger, warning, info, light, dark
+        statusTextSpan.textContent = message;
+        statusMessageDiv.className = `alert alert-${type} alert-dismissible fade show`; // Reset classes
+        statusMessageDiv.classList.remove('d-none');
+
+        // Auto-dismiss after 5 seconds
+        setTimeout(() => {
+            const bsAlert = bootstrap.Alert.getOrCreateInstance(statusMessageDiv);
+            if (bsAlert) {
+                bsAlert.close();
+            }
+        }, 5000);
+    }
+
+    // --- Event Listeners ---
+
+    // Find Route Button Click
+    findRouteButton.addEventListener('click', function () {
+        const sourceKey = sourceSelect.value;
+        const destinationKey = destinationSelect.value;
+
+        if (!sourceKey || !destinationKey) {
+            showStatusMessage('لطفاً ایستگاه مبدأ و مقصد را انتخاب کنید.', 'warning');
+            return;
+        }
+        if (sourceKey === destinationKey) {
+             showStatusMessage('ایستگاه مبدأ و مقصد نمی‌توانند یکسان باشند.', 'warning');
+            return;
+        }
+
+        // Optional: Show loading state
+        routeResultDiv.innerHTML = '<div class="text-center p-3"><i class="fas fa-spinner fa-spin fa-2x"></i><p>در حال جستجوی مسیر...</p></div>';
+        routeActionsDiv.classList.add('d-none');
+
+        // Use setTimeout to allow UI update before potentially long calculation
+        setTimeout(() => {
+            const route = findRouteBFS(sourceKey, destinationKey);
+            displayRoute(route);
+        }, 50); // Small delay
+    });
+
+    // Dark Mode Toggle Click
+    darkModeToggle.addEventListener('click', function () {
+        document.body.classList.toggle('dark-mode');
+        const isDarkMode = document.body.classList.contains('dark-mode');
+        if (isDarkMode) {
+            darkModeIcon.classList.replace('fa-moon', 'fa-sun');
+            localStorage.setItem('theme', 'dark');
+        } else {
+            darkModeIcon.classList.replace('fa-sun', 'fa-moon');
+            localStorage.setItem('theme', 'light');
+        }
+        // Re-initialize map to potentially apply dark theme tiles if available/configured
+        // initializeMap(); // Uncomment if you have dark map tiles
+    });
+
+    // Save Route Button Click
+    saveRouteButton.addEventListener('click', function () {
+        const sourceKey = sourceSelect.value;
+        const destinationKey = destinationSelect.value;
+        const currentRoute = findRouteBFS(sourceKey, destinationKey); // Recalculate to be sure
+
+        if (currentRoute) {
+            // Avoid saving duplicates (simple check based on source/dest)
+            const exists = savedRoutes.some(r => r.source === sourceKey && r.destination === destinationKey);
+            if (!exists) {
+                savedRoutes.push({
+                    source: sourceKey,
+                    sourceName: stations[sourceKey]?.translations?.fa || sourceKey,
+                    destination: destinationKey,
+                    destinationName: stations[destinationKey]?.translations?.fa || destinationKey,
+                    route: currentRoute
+                });
+                localStorage.setItem('savedRoutes', JSON.stringify(savedRoutes));
+                showStatusMessage('مسیر با موفقیت ذخیره شد!', 'success');
+            } else {
+                showStatusMessage('این مسیر قبلاً ذخیره شده است.', 'info');
+            }
+        } else {
+             showStatusMessage('خطا: امکان ذخیره مسیر وجود ندارد.', 'danger');
         }
     });
 
+    // Share Route Button Click
+    shareRouteButton.addEventListener('click', function () {
+        const sourceKey = sourceSelect.value;
+        const destinationKey = destinationSelect.value;
+
+        if (!sourceKey || !destinationKey) {
+            showStatusMessage('لطفاً ابتدا یک مسیر پیدا کنید.', 'warning');
+            return;
+        }
+
+        const route = findRouteBFS(sourceKey, destinationKey);
+        if (route) {
+            const sourceName = stations[sourceKey]?.translations?.fa || sourceKey;
+            const destName = stations[destinationKey]?.translations?.fa || destinationKey;
+            const routeText = route.map(stationKey => stations[stationKey]?.translations?.fa || stationKey).join(' -> ');
+            // Construct URL with query parameters
+            const shareUrl = `${window.location.origin}${window.location.pathname}?source=${encodeURIComponent(sourceKey)}&destination=${encodeURIComponent(destinationKey)}`;
+            const shareContent = `مسیر مترو تهران از ${sourceName} به ${destName}:\n${routeText}\n\nمشاهده مسیر: ${shareUrl}\n\n(ایجاد شده توسط ریل ثا)`;
+
+            if (navigator.share) { // Use Web Share API if available
+                navigator.share({
+                    title: `مسیر مترو از ${sourceName} به ${destName}`,
+                    text: shareContent,
+                    url: shareUrl,
+                })
+                .then(() => showStatusMessage('مسیر به اشتراک گذاشته شد!', 'success'))
+                .catch((error) => {
+                    console.error('خطا در اشتراک گذاری:', error);
+                    // Fallback to clipboard if share fails or is cancelled
+                    copyToClipboard(shareContent);
+                });
+            } else { // Fallback to clipboard
+                copyToClipboard(shareContent);
+            }
+        } else {
+            showStatusMessage('خطا: امکان اشتراک‌گذاری مسیر وجود ندارد.', 'danger');
+        }
+    });
+
+     // Helper function to copy text to clipboard
+    function copyToClipboard(text) {
+        navigator.clipboard.writeText(text)
+            .then(() => showStatusMessage('مسیر در کلیپ‌بورد کپی شد!', 'success'))
+            .catch(err => {
+                console.error('خطا در کپی کردن:', err);
+                showStatusMessage('خطا در کپی کردن مسیر در کلیپ‌بورد.', 'danger');
+            });
+    }
+
+    // Print Route Button Click
+    printRouteButton.addEventListener('click', function () {
+        window.print(); // Uses CSS @media print rules for formatting
+    });
+
+     // Check for query parameters on page load to potentially pre-fill a shared route
+    function checkUrlForRoute() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const sourceParam = urlParams.get('source');
+        const destParam = urlParams.get('destination');
+
+        if (sourceParam && destParam && stations[sourceParam] && stations[destParam]) {
+            // Set the values in the select dropdowns
+            // Use jQuery's val() and trigger('change') for Select2 compatibility
+             $('#source').val(sourceParam).trigger('change');
+             $('#destination').val(destParam).trigger('change');
+
+            // Find and display the route
+             // Use a small timeout to ensure Select2 updates visually first
+            setTimeout(() => {
+                 findRouteButton.click();
+                 showStatusMessage('مسیر به اشتراک گذاشته شده بارگذاری شد.', 'info');
+            }, 200);
+        }
+    }
+
+    // --- Run Initialization ---
+    initializeMap();
+    initializeDarkMode();
+    loadStationData().then(() => {
+        // Check for shared route in URL only after stations are loaded
+        checkUrlForRoute();
+    });
 
 }); // End DOMContentLoaded
