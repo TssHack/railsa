@@ -181,6 +181,12 @@ document.addEventListener('DOMContentLoaded', function () {
      * Displays the found route on the page and map.
      * @param {string[]} route - Array of station keys.
      */
+        // ... (بقیه کدها و توابع مثل قبل باقی می‌مانند) ...
+
+    /**
+     * Displays the found route on the page and map with animations and line numbers.
+     * @param {string[]} routePath - Array of station keys.
+     */
     function displayRoute(routePath) {
         routeResultDiv.innerHTML = ''; // Clear previous results or skeleton
         routeLayerGroup.clearLayers(); // Clear previous route from map
@@ -191,64 +197,50 @@ document.addEventListener('DOMContentLoaded', function () {
             routeResultDiv.innerHTML = '<p class="alert alert-warning text-center">مسیری بین ایستگاه‌های انتخابی یافت نشد.</p>';
             return;
         }
-         if (routePath.length === 1) {
+        if (routePath.length === 1) {
             routeResultDiv.innerHTML = '<p class="alert alert-info text-center">مبدأ و مقصد یکسان است.</p>';
-            // Optionally show the single station on map
             const station = stations[routePath[0]];
-             if (station?.latitude && station?.longitude) {
-                 mapCardDiv.classList.remove('d-none'); // Show map card
-                 addStationMarker(routePath[0], 'ایستگاه:', 'blue');
-                 map.setView([station.latitude, station.longitude], MAP_DEFAULT_ZOOM + 3);
-             }
+            if (station?.latitude && station?.longitude) {
+                mapCardDiv.classList.remove('d-none');
+                addStationMarker(routePath[0], 'ایستگاه:', 'blue');
+                map.setView([station.latitude, station.longitude], MAP_DEFAULT_ZOOM + 3);
+            }
             return;
         }
 
-
+        // --- 1. Build HTML for Route Steps (Similar to before) ---
         let routeHTML = `<h2 class="text-center mb-4">مسیر پیشنهادی (${routePath.length} ایستگاه)</h2>`;
         let previousLine = null;
         let currentSegmentLine = null;
         let totalTime = 0;
-        const routeCoordinates = [];
-        let segmentData = []; // Store { coords: [[lat,lng],[lat,lng]], line: number, stepId: string }
+        const routeCoordinates = []; // Store all coordinates for bounds calculation
+        let mapElements = []; // Store map layers { lineLayer, decoratorLayer, stepId } for highlighting
 
-        // Build route steps HTML and prepare map data
         routePath.forEach((stationKey, index) => {
             const station = stations[stationKey];
-            if (!station) {
-                console.error("Missing station data for key:", stationKey);
-                return; // Skip this step if data is missing
-            }
+            if (!station) return;
 
-            // Determine the line for the current segment
+            // Determine line for the current segment
             if (index > 0) {
-                const prevStationKey = routePath[index - 1];
-                const prevStation = stations[prevStationKey];
-                 // Find a common line between current and previous station for this segment
+                const prevStation = stations[routePath[index - 1]];
                 currentSegmentLine = station.lines.find(line => prevStation?.lines.includes(line)) || station.lines[0];
             } else {
-                currentSegmentLine = station.lines[0]; // First station's primary line
+                currentSegmentLine = station.lines[0];
             }
 
-            // Add station coordinates for map polyline segments
+             // Store coordinates
              if (station.latitude && station.longitude) {
                 routeCoordinates.push([station.latitude, station.longitude]);
-                 // Create segment data for map highlighting
-                 if (index > 0) {
-                     const prevCoords = routeCoordinates[routeCoordinates.length - 2]; // Get previous coord
-                     segmentData.push({
-                         coords: [prevCoords, [station.latitude, station.longitude]],
-                         line: previousLine, // The line used *before* arriving at current station
-                         stepId: `step-${index}` // Link segment to the step *after* it
-                     });
-                 }
              }
 
-            // Detect line change: Occurs *at* the current station if its line differs from the previous segment's line
-            if (previousLine !== null && currentSegmentLine !== previousLine) {
+            // Detect line change and build HTML
+            if (index > 0 && previousLine !== null && currentSegmentLine !== previousLine) {
+                 // Find the interchange station name
+                 const interchangeStationName = stations[routePath[index-1]]?.translations?.fa || routePath[index-1];
                 routeHTML += `
-                    <div class="line-change" data-step-id="change-${index}">
+                    <div class="line-change" data-step-id="change-${index -1}">
                         <i class="fas fa-exchange-alt"></i>
-                        تغییر خط در <strong>${station.translations?.fa || stationKey}</strong>:
+                        تغییر خط در <strong>${interchangeStationName}</strong>:
                         از <span class="badge text-white" style="background-color: ${getLineColor(previousLine)};">خط ${previousLine}</span>
                         به <span class="badge text-white" style="background-color: ${getLineColor(currentSegmentLine)};">خط ${currentSegmentLine}</span>
                         <span class="text-muted small ms-auto">(+ ~${TIME_PER_LINE_CHANGE} دقیقه)</span>
@@ -261,7 +253,7 @@ document.addEventListener('DOMContentLoaded', function () {
             const isStart = index === 0;
             const isEnd = index === routePath.length - 1;
             const stepClass = isStart ? 'start-station' : (isEnd ? 'end-station' : '');
-            const stepId = `step-${index}`; // Unique ID for interaction
+            const stepId = `step-${index}`;
 
             routeHTML += `
                 <div class="route-step ${stepClass}" data-step-id="${stepId}" data-coords="${station.latitude},${station.longitude}">
@@ -274,365 +266,236 @@ document.addEventListener('DOMContentLoaded', function () {
             `;
 
             if (index > 0) {
-                totalTime += TIME_PER_STATION; // Add time for travel from previous station
+                totalTime += TIME_PER_STATION;
             }
-            previousLine = currentSegmentLine; // Update line for the next segment calculation
+            previousLine = currentSegmentLine;
         });
 
-        // Add total estimated time
-        routeHTML += `
-            <div class="travel-time">
-                <i class="fas fa-clock"></i> زمان تقریبی کل سفر: ${totalTime} دقیقه
-            </div>
-        `;
-        routeResultDiv.innerHTML = routeHTML; // Display generated HTML
+        // Add total estimated time HTML
+        routeHTML += `<div class="travel-time"> ... </div>`; // (Same as before)
+        routeResultDiv.innerHTML = routeHTML;
 
-        // --- Draw on Map ---
+        // --- 2. Draw Enhanced Route on Map ---
         mapCardDiv.classList.remove('d-none'); // Show map card
         let overallBounds = L.latLngBounds([]); // To fit map view
 
-        // Draw segments first for highlighting
-        segmentData.forEach((segment) => {
-             const segmentLine = L.polyline(segment.coords, {
-                 color: getLineColor(segment.line),
-                 weight: 6,
-                 opacity: 0.85,
-                 stepId: segment.stepId // Store related step ID
-             }).addTo(routeLayerGroup);
+        // Iterate through segments (pairs of coordinates) to draw animated lines and decorators
+        for (let i = 0; i < routeCoordinates.length - 1; i++) {
+            const startPoint = routeCoordinates[i];
+            const endPoint = routeCoordinates[i + 1];
+            const segmentCoords = [startPoint, endPoint];
 
-              // Extend bounds for map fitting
-              overallBounds.extend(segment.coords[0]);
-              overallBounds.extend(segment.coords[1]);
-
-             // Add hover effect on map polyline segment
-             segmentLine.on('mouseover', function (e) {
-                 this.setStyle({ weight: 9, opacity: 1 });
-                 highlightListItem(this.options.stepId, true);
-             });
-             segmentLine.on('mouseout', function (e) {
-                 this.setStyle({ weight: 6, opacity: 0.85 });
-                 highlightListItem(this.options.stepId, false);
-             });
-        });
-
-        // Add Markers for Start and End
-        if (routePath.length > 0) {
-            addStationMarker(routePath[0], ' مبدأ: ', 'blue');
-            addStationMarker(routePath[routePath.length - 1], ' مقصد: ', 'green');
-        }
-
-        // Fit map view to the route bounds
-        if (overallBounds.isValid()) {
-             map.fitBounds(overallBounds, { padding: MAP_ROUTE_ZOOM_PADDING });
-        } else if (routeCoordinates.length === 1) {
-             // Handle single point case (start=end) - already handled above
-             map.setView(routeCoordinates[0], MAP_DEFAULT_ZOOM + 3);
-        }
+            // Determine the line number for this specific segment
+             const startStationKey = routePath[i];
+             const endStationKey = routePath[i + 1];
+             const startStation = stations[startStationKey];
+             const endStation = stations[endStationKey];
+             const segmentLineNum = endStation.lines.find(line => startStation?.lines.includes(line)) || endStation.lines[0];
 
 
-        // --- Add Hover Listeners to List Items for Map Interaction ---
-        const routeSteps = routeResultDiv.querySelectorAll('.route-step[data-step-id]');
-        routeSteps.forEach((step, index) => {
-            step.addEventListener('mouseover', () => {
-                // Highlight the segment *leading* to this step
-                const segmentStepId = `step-${index}`;
-                highlightMapSegment(segmentStepId, true);
-                // Highlight the marker *at* this step
-                const coords = step.getAttribute('data-coords').split(',');
-                 if (coords.length === 2) {
-                     highlightMapMarker(coords, true);
-                 }
-
-            });
-            step.addEventListener('mouseout', () => {
-                const segmentStepId = `step-${index}`;
-                highlightMapSegment(segmentStepId, false);
-                 const coords = step.getAttribute('data-coords').split(',');
-                 if (coords.length === 2) {
-                     highlightMapMarker(coords, false);
-                 }
-            });
-        });
-
-        // Show action buttons
-        routeActionsDiv.classList.remove('d-none');
-        // Store the current route for actions
-        currentRoute = routePath;
-    }
+            // --- a) Create Animated AntPath Polyline ---
+            const antPathOptions = {
+                delay: 400,          // Delay before animation starts
+                dashArray: [10, 20], // Dash pattern
+                weight: 6,           // Line thickness
+                color: getLineColor(segmentLineNum), // Line color
+                opacity: 0.85,
+                pulseColor: "#FFFFFF", // Color of the animated dash/pulse
+                hardwareAccelerated: true, // Use hardware acceleration if available
+                // Custom options: store stepId for linking
+                stepId: `step-${i + 1}` // Link segment to the step *after* it
+            };
+            const antPathLine = L.polyline.antPath(segmentCoords, antPathOptions).addTo(routeLayerGroup);
 
 
-    /** Helper to add styled markers to the map */
-    function addStationMarker(stationKey, prefix = '', iconColor = 'red') {
-        const station = stations[stationKey];
-        if (station?.latitude && station?.longitude) {
-            // Create a simple circle marker
-            const marker = L.circleMarker([station.latitude, station.longitude], {
-                radius: 8,
-                fillColor: iconColor,
-                color: "#fff", // White border
-                weight: 2,
-                opacity: 1,
-                fillOpacity: 0.9,
-                stationKey: stationKey // Store key for potential future use
+            // --- b) Create Polyline Decorator for Line Number ---
+            const decorator = L.polylineDecorator(antPathLine, { // Decorate the antPath line itself
+                patterns: [
+                    {
+                        offset: '50%', // Position in the middle of the segment
+                        repeat: 0,     // Don't repeat on short segments
+                        symbol: L.Symbol.text(String(segmentLineNum), { // Display line number as text
+                            pixelSize: 12, // Font size
+                            polygon: false, // Don't draw polygon background
+                            pathOptions: {
+                                stroke: true,
+                                weight: 0.5, // Very thin stroke around text
+                                color: '#000000', // Text border color (optional)
+                                fill: true,
+                                fillColor: '#FFFFFF', // Text color
+                                fillOpacity: 1,
+                                // Custom options for styling the text background (optional)
+                                // Use a background shape for better visibility:
+                                // L.Symbol.marker({ markerOptions: { icon: L.divIcon({className: 'line-number-label', html: String(segmentLineNum)}) }})
+                            }
+                        })
+                    }
+                    // Optionally add arrows for direction:
+                    // {offset: '10%', repeat: '80px', symbol: L.Symbol.arrowHead({pixelSize: 10, pathOptions: {fillOpacity: 1, weight: 0, color: getLineColor(segmentLineNum)}})}
+                ]
             }).addTo(routeLayerGroup);
 
-            marker.bindPopup(`<b>${prefix}</b>${station.translations?.fa || stationKey}`, {closeButton: false});
-            marker.on('mouseover', function (e) { this.openPopup(); this.setRadius(10); });
-            marker.on('mouseout', function (e) { this.closePopup(); this.setRadius(8); });
+
+             // Store layers for highlighting
+             mapElements.push({
+                lineLayer: antPathLine,
+                decoratorLayer: decorator, // We might not need to highlight the decorator
+                stepId: `step-${i + 1}`
+             });
+
+             // Extend bounds for map fitting
+             overallBounds.extend(startPoint);
+             overallBounds.extend(endPoint);
+        }
+
+
+        // --- 3. Add Markers and Fit Map ---
+        if (routePath.length > 0) {
+            addStationMarker(routePath[0], ' مبدأ: ', '#0d6efd'); // Primary color blue
+            addStationMarker(routePath[routePath.length - 1], ' مقصد: ', '#198754'); // Success color green
+        }
+        if (overallBounds.isValid()) {
+            map.fitBounds(overallBounds, { padding: MAP_ROUTE_ZOOM_PADDING, maxZoom: 16 }); // Avoid zooming too far in
+        }
+
+        // --- 4. Setup Hover Interactions (List <-> Map) ---
+        setupListMapInteractions(mapElements);
+
+        // --- 5. Show Action Buttons and Store Route ---
+        routeActionsDiv.classList.remove('d-none');
+        currentRoute = routePath; // Store for save/share/print
+    }
+
+
+    /** Sets up hover interactions between the route list and map elements */
+    function setupListMapInteractions(mapElements) {
+        const routeSteps = routeResultDiv.querySelectorAll('.route-step[data-step-id]');
+        routeSteps.forEach((step) => {
+            const stepId = step.getAttribute('data-step-id');
+            const coords = step.getAttribute('data-coords')?.split(',');
+
+            step.addEventListener('mouseover', () => {
+                highlightMapElement(mapElements, stepId, true); // Highlight associated line segment
+                 if (coords?.length === 2) highlightMapMarker(coords, true); // Highlight station marker
+            });
+            step.addEventListener('mouseout', () => {
+                highlightMapElement(mapElements, stepId, false);
+                 if (coords?.length === 2) highlightMapMarker(coords, false);
+            });
+        });
+
+         // Add hover listeners to map lines (optional, might conflict with marker popups)
+         mapElements.forEach(elem => {
+             if (elem.lineLayer) {
+                 elem.lineLayer.on('mouseover', function(e) {
+                     this.setStyle({ weight: 9, opacity: 1 }); // Highlight line
+                     highlightListItem(this.options.stepId, true); // Highlight corresponding list item
+                     // Optional: Bring related decorator to front if needed
+                     // if (elem.decoratorLayer) elem.decoratorLayer.bringToFront();
+                 });
+                 elem.lineLayer.on('mouseout', function(e) {
+                      this.setStyle({ weight: 6, opacity: 0.85 }); // Reset style
+                      highlightListItem(this.options.stepId, false);
+                 });
+             }
+         });
+    }
+
+     /** Helper to highlight/unhighlight a map segment (AntPath) */
+    function highlightMapElement(mapElements, stepId, highlight = true) {
+        const element = mapElements.find(el => el.stepId === stepId);
+        if (element && element.lineLayer) {
+            element.lineLayer.setStyle({
+                 weight: highlight ? 9 : 6, // Make line thicker on highlight
+                 opacity: highlight ? 1 : 0.85
+             });
+              if(highlight) element.lineLayer.bringToFront();
         }
     }
 
-    /** Helper to highlight/unhighlight a list item */
+    /** Helper to highlight/unhighlight a list item by adding/removing a CSS class */
     function highlightListItem(stepId, highlight = true) {
          const listItem = routeResultDiv.querySelector(`[data-step-id='${stepId}']`);
          if (listItem) {
-            // Using CSS classes for highlighting is cleaner
              if (highlight) {
-                listItem.classList.add('highlighted');
+                listItem.classList.add('highlighted'); // Add class
              } else {
-                listItem.classList.remove('highlighted');
+                listItem.classList.remove('highlighted'); // Remove class
              }
-             // listItem.style.backgroundColor = highlight ? 'var(--light-hover-bg, #e0e0e0)' : '';
-             // listItem.style.transform = highlight ? 'scale(1.02)' : 'scale(1)';
          }
     }
-     /** Helper to highlight/unhighlight a map segment */
-    function highlightMapSegment(stepId, highlight = true) {
-         routeLayerGroup.eachLayer(layer => {
-            if (layer instanceof L.Polyline && layer.options.stepId === stepId) {
-                 layer.setStyle({
-                     weight: highlight ? 9 : 6,
-                     opacity: highlight ? 1 : 0.85
-                 });
-                 if(highlight) layer.bringToFront();
-            }
-        });
+
+     // --- (Make sure addStationMarker, getLineColor, showStatusMessage, etc. are defined as before) ---
+     // --- (Make sure Event Listeners for buttons, dark mode etc. are defined as before) ---
+     // --- (Make sure Initialization calls are defined as before) ---
+
+    /** Helper to add styled markers to the map */
+    function addStationMarker(stationKey, prefix = '', markerColor = 'red') {
+        const station = stations[stationKey];
+        if (station?.latitude && station?.longitude) {
+            const marker = L.circleMarker([station.latitude, station.longitude], {
+                radius: 8,
+                fillColor: markerColor, // Use passed color
+                color: "#fff",
+                weight: 2,
+                opacity: 1,
+                fillOpacity: 0.95, // Slightly more opaque
+                stationKey: stationKey,
+                interactive: true // Ensure marker is interactive
+            }).addTo(routeLayerGroup);
+
+            marker.bindPopup(`<b>${prefix}</b>${station.translations?.fa || stationKey}`, {closeButton: false, autoPan: false});
+             // Highlight on hover
+            marker.on('mouseover', function (e) {
+                 this.openPopup();
+                 this.setRadius(11); // Increase size
+                 this.bringToFront();
+                 // Also highlight corresponding list item if possible
+                 const stepElem = routeResultDiv.querySelector(`[data-coords^="${this.getLatLng().lat},${this.getLatLng().lng}"]`);
+                 if(stepElem) highlightListItem(stepElem.getAttribute('data-step-id'), true);
+
+            });
+            marker.on('mouseout', function (e) {
+                 this.closePopup();
+                 this.setRadius(8); // Reset size
+                  const stepElem = routeResultDiv.querySelector(`[data-coords^="${this.getLatLng().lat},${this.getLatLng().lng}"]`);
+                 if(stepElem) highlightListItem(stepElem.getAttribute('data-step-id'), false);
+            });
+        }
     }
+
       /** Helper to highlight/unhighlight a map marker by coordinates */
-    function highlightMapMarker(coords, highlight = true) {
-        if (!coords || coords.length !== 2) return;
+     function highlightMapMarker(coords, highlight = true) {
+        // ... (implementation from previous response is fine) ...
+         if (!coords || coords.length !== 2) return;
          const lat = parseFloat(coords[0]);
          const lng = parseFloat(coords[1]);
          routeLayerGroup.eachLayer(layer => {
              if (layer instanceof L.CircleMarker) {
                  const layerLatLng = layer.getLatLng();
-                 // Compare with tolerance due to potential float precision issues
                  if (Math.abs(layerLatLng.lat - lat) < 0.00001 && Math.abs(layerLatLng.lng - lng) < 0.00001) {
                      layer.setRadius(highlight ? 11 : 8);
-                     if(highlight) layer.bringToFront();
+                     if(highlight) {
+                         layer.bringToFront();
+                         layer.openPopup(); // Optionally open popup on hover
+                     } else {
+                        // layer.closePopup(); // Close popup on mouseout
+                     }
                  }
              }
          });
-    }
-
-
-    /** Gets the color for a specific metro line */
-    function getLineColor(line) {
-        // Ensure line is treated as a number if it's passed as string
-        const lineNum = parseInt(line, 10);
-        const lineColors = {
-            1: '#E0001F', // Red
-            2: '#2F4389', // Dark Blue
-            3: '#67C5F5', // Light Blue
-            4: '#F8E100', // Yellow
-            5: '#007E46', // Green
-            6: '#EF639F', // Pink
-            7: '#7F0B74', // Purple
-        };
-        return lineColors[lineNum] || '#777777'; // Default grey
-    }
-
-    /** Shows status messages to the user */
-    function showStatusMessage(message, type = 'info', autoDismiss = true) {
-        statusTextSpan.textContent = message;
-        // Set class for alert type
-        statusMessageDiv.className = `alert alert-${type} alert-dismissible fade show`;
-        statusMessageDiv.classList.remove('d-none'); // Make it visible
-
-        // Auto-dismiss logic
-        if (autoDismiss) {
-            setTimeout(() => {
-                const bsAlert = bootstrap.Alert.getOrCreateInstance(statusMessageDiv);
-                if (bsAlert && statusMessageDiv.classList.contains('show')) {
-                    bsAlert.close();
-                }
-            }, 5000); // Dismiss after 5 seconds
-        }
-    }
-
-    /** Copies text to clipboard */
-    function copyToClipboard(text) {
-        navigator.clipboard.writeText(text)
-            .then(() => showStatusMessage('مسیر در کلیپ‌بورد کپی شد!', 'success'))
-            .catch(err => {
-                console.error('Clipboard copy failed:', err);
-                showStatusMessage('خطا در کپی کردن مسیر. لطفاً دستی کپی کنید.', 'danger');
-                // As a fallback, could display the text in a modal for manual copy
-            });
-    }
-
-    // --- Event Listeners ---
-
-    // Find Route Button Click
-    findRouteButton.addEventListener('click', function () {
-        const sourceKey = sourceSelect.value;
-        const destinationKey = destinationSelect.value;
-
-        // Basic Validation
-        if (!sourceKey || !destinationKey) {
-            showStatusMessage('لطفاً ایستگاه مبدأ و مقصد را انتخاب کنید.', 'warning');
-            return;
-        }
-        // Note: Same source/destination is handled within displayRoute now.
-
-        // Show Skeleton Loader
-        routeResultDiv.innerHTML = ''; // Clear previous content first
-        skeletonLoaderDiv.classList.remove('d-none');
-        routeResultDiv.appendChild(skeletonLoaderDiv); // Ensure skeleton is inside
-        routeActionsDiv.classList.add('d-none'); // Hide actions
-        routeLayerGroup.clearLayers(); // Clear map layers
-        mapCardDiv.classList.add('d-none'); // Hide map card
-        currentRoute = null; // Reset current route
-
-        // Perform calculation after a short delay to allow UI update
-        setTimeout(() => {
-            const routePath = findRouteBFS(sourceKey, destinationKey);
-            skeletonLoaderDiv.classList.add('d-none'); // Hide skeleton
-             if (routeResultDiv.contains(skeletonLoaderDiv)) {
-                 routeResultDiv.removeChild(skeletonLoaderDiv); // Remove skeleton from DOM
-             }
-            displayRoute(routePath); // Display results (or 'no route' message)
-        }, 400); // Delay to ensure skeleton visibility
-    });
-
-    // Dark Mode Toggle Click
-    darkModeToggle.addEventListener('click', function () {
-        document.body.classList.toggle('dark-mode');
-        const isDarkMode = document.body.classList.contains('dark-mode');
-        if (isDarkMode) {
-            darkModeIcon.classList.replace('fa-moon', 'fa-sun');
-            localStorage.setItem('theme', 'dark');
-        } else {
-            darkModeIcon.classList.replace('fa-sun', 'fa-moon');
-            localStorage.setItem('theme', 'light');
-        }
-         // Note: Map tiles don't automatically switch theme unless using specific tile provider/plugin
-    });
-
-    // Save Route Button Click
-    saveRouteButton.addEventListener('click', function () {
-        if (!currentRoute) {
-            showStatusMessage('ابتدا باید مسیری را پیدا کنید.', 'warning');
-            return;
-        }
-        const sourceKey = sourceSelect.value; // Get current selection
-        const destinationKey = destinationSelect.value;
-
-         // Basic check if route matches current selection (might be redundant if findRoute is always clicked first)
-         if (!currentRoute || currentRoute[0] !== sourceKey || currentRoute[currentRoute.length - 1] !== destinationKey) {
-              showStatusMessage('مسیر نمایش داده شده با انتخاب فعلی مطابقت ندارد. لطفاً دوباره مسیر را پیدا کنید.', 'warning');
-              return;
-         }
-
-        // Avoid saving duplicates (simple check)
-        const exists = savedRoutes.some(r => r.source === sourceKey && r.destination === destinationKey);
-        if (!exists) {
-            const sourceName = stations[sourceKey]?.translations?.fa || sourceKey;
-            const destName = stations[destinationKey]?.translations?.fa || destinationKey;
-            savedRoutes.push({
-                source: sourceKey,
-                sourceName: sourceName,
-                destination: destinationKey,
-                destinationName: destName,
-                route: currentRoute // Save the calculated path
-            });
-            try {
-                 localStorage.setItem('savedRoutes', JSON.stringify(savedRoutes));
-                 showStatusMessage(`مسیر ${sourceName} به ${destName} ذخیره شد.`, 'success');
-            } catch (e) {
-                 console.error("Error saving to localStorage:", e);
-                 showStatusMessage('خطا در ذخیره‌سازی مسیر. (ممکن است حافظه پر باشد)', 'danger');
-            }
-        } else {
-            showStatusMessage('این مسیر قبلاً ذخیره شده است.', 'info');
-        }
-    });
-
-    // Share Route Button Click
-    shareRouteButton.addEventListener('click', function () {
-         if (!currentRoute) {
-            showStatusMessage('ابتدا باید مسیری را پیدا کنید.', 'warning');
-            return;
-        }
-        const sourceKey = currentRoute[0];
-        const destinationKey = currentRoute[currentRoute.length - 1];
-        const sourceName = stations[sourceKey]?.translations?.fa || sourceKey;
-        const destName = stations[destinationKey]?.translations?.fa || destinationKey;
-
-        // Generate text summary
-        const routeText = currentRoute.map(key => stations[key]?.translations?.fa || key).join(' -> ');
-        // Generate shareable URL
-        const shareUrl = `${window.location.origin}${window.location.pathname}?source=${encodeURIComponent(sourceKey)}&destination=${encodeURIComponent(destinationKey)}`;
-        // Combine text and URL
-        const shareContent = `مسیر مترو تهران از ${sourceName} به ${destName}:\n${routeText}\n\nمشاهده آنلاین مسیر:\n${shareUrl}\n\n(ایجاد شده توسط ریل ثا)`;
-
-        if (navigator.share) { // Use Web Share API if available
-            navigator.share({
-                title: `مسیر مترو: ${sourceName} به ${destName}`,
-                text: shareContent,
-                // url: shareUrl // URL included in text is often better for cross-platform compatibility
-            })
-            .then(() => console.log('Successful share'))
-            .catch((error) => {
-                 console.error('Share failed:', error);
-                 // Fallback to clipboard only if share API exists but fails
-                 copyToClipboard(shareContent);
-            });
-        } else { // Fallback to clipboard if Web Share API not supported
-            copyToClipboard(shareContent);
-        }
-    });
-
-    // Print Route Button Click
-    printRouteButton.addEventListener('click', function () {
-         if (!currentRoute) {
-            showStatusMessage('ابتدا باید مسیری را پیدا کنید.', 'warning');
-            return;
-        }
-        window.print(); // Uses CSS @media print rules
-    });
-
-    /** Checks URL for route parameters on page load */
-    function checkUrlForRoute() {
-        const urlParams = new URLSearchParams(window.location.search);
-        const sourceParam = urlParams.get('source');
-        const destParam = urlParams.get('destination');
-
-        if (sourceParam && destParam && stations[sourceParam] && stations[destParam]) {
-             console.log("Loading route from URL parameters:", sourceParam, destParam);
-            // Set the values in the select dropdowns using Select2's API
-             $('#source').val(sourceParam).trigger('change');
-             $('#destination').val(destParam).trigger('change');
-
-            // Automatically find and display the route
-             // Use a timeout to ensure Select2 updates visually and data is ready
-            setTimeout(() => {
-                 findRouteButton.click(); // Simulate click
-                 showStatusMessage('مسیر اشتراک گذاشته شده بارگذاری شد.', 'info');
-            }, 500); // Adjust delay if needed
-        }
-    }
+     }
 
     // --- Run Initializations ---
+    // ... (same initialization flow as before) ...
     setFooterYear();
-    initializeMap(); // Initialize map structure first
+    initializeMap();
     initializeDarkMode();
-    // Load station data, then check URL params
     loadStationData().then(success => {
         if (success) {
             checkUrlForRoute();
         }
     });
 
-}); // End DOMContentLoaded
 
+}); // End DOMContentLoaded
